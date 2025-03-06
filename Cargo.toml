@@ -1,7 +1,19 @@
 [package]
-name = "pokerd-backend"
-version = "0.1.0"
+authors = ["SAK"]
+categories = ["games"]
+description = "Backend service for pokerd"
 edition = "2024"
+keywords = ["poker", "web3", "decentralized", "axum"]
+name = "pokerd-backend"
+readme = "./README.md"
+repository = "https://github.com/SAK-monad-hackathon/pokerd-backend"
+version = "0.1.0"
+
+[lints.clippy]
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+pedantic = { level = "warn", priority = -1 }
 
 [dependencies]
 axum = "0.8.1"
