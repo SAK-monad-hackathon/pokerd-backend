@@ -1,11 +1,11 @@
-use std::{
-    sync::LazyLock,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{sync::LazyLock, time::Duration};
 
 use alloy::{
-    primitives::{Address, B256},
+    dyn_abi::TypedData,
+    primitives::{Address, keccak256},
     signers::Signature,
+    sol,
+    sol_types::eip712_domain,
 };
 use anyhow::anyhow;
 use axum::{Json, RequestPartsExt as _, extract::FromRequestParts, http::request::Parts};
@@ -13,6 +13,7 @@ use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
+use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
@@ -54,16 +55,23 @@ impl AuthBody {
     }
 }
 
+sol! {
+    #[derive(Debug, Serialize, Deserialize)]
+    struct LoginData {
+        int64 timestamp;
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AuthPayload {
-    prehash: B256,
+    login_data: LoginData,
     signature: Signature,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    address: Address,
-    exp: u64,
+    pub address: Address,
+    pub exp: i64,
 }
 
 impl<S> FromRequestParts<S> for Claims
@@ -85,18 +93,28 @@ where
 }
 
 pub async fn authorize(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, AppError> {
-    let Ok(address) = payload
-        .signature
-        .recover_address_from_prehash(&payload.prehash)
-    else {
+    let domain = eip712_domain! {
+        name: "Pokerd",
+        version: "1",
+        salt: keccak256("monad-hackathon")
+    };
+    let typed_data = TypedData::from_struct(&payload.login_data, Some(domain));
+    let hash = typed_data
+        .eip712_signing_hash()
+        .expect("login data should be hashable");
+    let Ok(address) = payload.signature.recover_address_from_prehash(&hash) else {
         return Err(anyhow!("could not verify signature").into());
     };
+    let now = Utc::now();
+    if payload.login_data.timestamp < (now - Duration::from_secs(30)).timestamp() {
+        return Err(anyhow!("signature is too old").into());
+    }
+    if payload.login_data.timestamp > now.timestamp() {
+        return Err(anyhow!("timestamp is in the future").into());
+    }
     let claims = Claims {
         address,
-        exp: (SystemTime::now() + Duration::from_secs(86400))
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
+        exp: (now + Duration::from_secs(86400)).timestamp(),
     };
     let token = encode(&Header::default(), &claims, &KEYS.encoding)?;
     Ok(Json(AuthBody::new(token)))

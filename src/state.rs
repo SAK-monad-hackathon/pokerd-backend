@@ -1,7 +1,7 @@
 use alloy::primitives::Address;
 use derive_more::IsVariant;
 
-use crate::cards::Card;
+use crate::cards::Hand;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, IsVariant)]
 pub enum GamePhase {
@@ -20,12 +20,12 @@ pub enum GamePhase {
 
 #[derive(Debug, Clone, Hash)]
 pub struct Player {
-    address: Address,
-    hand: [Card; 2],
+    pub address: Address,
+    pub hand: Hand,
 }
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct AppState {
-    phase: GamePhase,
-    players: Vec<Player>,
+    pub phase: GamePhase,
+    pub players: Vec<Player>,
 }

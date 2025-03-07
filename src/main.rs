@@ -15,7 +15,7 @@ use axum::{
 use tracing::{debug, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::state::AppState;
+use crate::{cards::hand, state::AppState};
 
 pub mod auth;
 pub mod cards;
@@ -42,6 +42,7 @@ async fn main() -> Result<()> {
     // routes
     let app = Router::new()
         .route("/", get(healthcheck))
+        .route("/hand", get(hand))
         .route("/authorize", post(authorize))
         .with_state(state);
 
