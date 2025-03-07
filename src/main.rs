@@ -66,14 +66,20 @@ pub enum AppError {
 
     #[error("auth error: {0}")]
     Auth(#[from] auth::AuthError),
+
+    #[error("cards endpoint error: {0}")]
+    Cards(#[from] cards::CardsError),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
             AppError::Internal(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
-            AppError::Auth(auth_error) => {
-                return auth_error.into_response();
+            AppError::Auth(err) => {
+                return err.into_response();
+            }
+            AppError::Cards(err) => {
+                return err.into_response();
             }
         };
 

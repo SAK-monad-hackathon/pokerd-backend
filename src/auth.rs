@@ -30,15 +30,6 @@ pub static KEYS: LazyLock<Keys> = LazyLock::new(|| {
     Keys::new(secret.as_bytes())
 });
 
-#[derive(thiserror::Error, Debug)]
-pub enum AuthError {
-    #[error("invalid token")]
-    InvalidToken,
-
-    #[error("token creation error")]
-    TokenCreation,
-}
-
 pub struct Keys {
     encoding: EncodingKey,
     decoding: DecodingKey,
@@ -107,6 +98,16 @@ where
 
         Ok(token_data.claims)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
+pub enum AuthError {
+    #[error("invalid token")]
+    InvalidToken,
+
+    #[error("token creation error")]
+    TokenCreation,
 }
 
 impl IntoResponse for AuthError {

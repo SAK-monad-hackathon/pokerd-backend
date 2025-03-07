@@ -1,9 +1,11 @@
 use std::sync::{Arc, RwLock};
 
+use alloy::primitives::Address;
 use anyhow::anyhow;
-use axum::{Json, debug_handler, extract::State};
+use axum::{Json, debug_handler, extract::State, http::StatusCode, response::IntoResponse};
 use derive_more::IsVariant;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::{
     AppError,
@@ -39,6 +41,28 @@ impl From<Card> for u8 {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Hand([Card; 2]);
+
+#[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
+pub enum CardsError {
+    #[error("match has not yet started")]
+    MatchNotStarted,
+
+    #[error("player not found: {0}")]
+    PlayerNotFound(Address),
+}
+
+impl IntoResponse for CardsError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match self {
+            CardsError::MatchNotStarted | CardsError::PlayerNotFound(_) => StatusCode::BAD_REQUEST,
+        };
+        let body = Json(json!({
+            "error": self.to_string(),
+        }));
+        (status, body).into_response()
+    }
+}
 
 #[debug_handler]
 pub async fn hand(
