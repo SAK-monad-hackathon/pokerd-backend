@@ -7,11 +7,12 @@ use std::{
 use anyhow::Result;
 use auth::authorize;
 use axum::{
-    Router,
+    Json, Router,
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use serde_json::json;
 use tracing::{debug, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
@@ -57,23 +58,28 @@ async fn healthcheck() -> &'static str {
     "Server is running"
 }
 
-pub struct AppError(anyhow::Error);
+#[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
+pub enum AppError {
+    #[error("internal server error: {0}")]
+    Internal(#[from] anyhow::Error),
+
+    #[error("auth error: {0}")]
+    Auth(#[from] auth::AuthError),
+}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Something went wrong: {}", self.0),
-        )
-            .into_response()
-    }
-}
+        let (status, error_message) = match self {
+            AppError::Internal(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+            AppError::Auth(auth_error) => {
+                return auth_error.into_response();
+            }
+        };
 
-impl<E> From<E> for AppError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self(err.into())
+        let body = Json(json!({
+            "error": error_message
+        }));
+        (status, body).into_response()
     }
 }

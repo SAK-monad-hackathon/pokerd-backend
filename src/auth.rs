@@ -8,7 +8,12 @@ use alloy::{
     sol_types::eip712_domain,
 };
 use anyhow::anyhow;
-use axum::{Json, RequestPartsExt as _, extract::FromRequestParts, http::request::Parts};
+use axum::{
+    Json, RequestPartsExt as _,
+    extract::FromRequestParts,
+    http::{StatusCode, request::Parts},
+    response::IntoResponse,
+};
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
@@ -16,6 +21,7 @@ use axum_extra::{
 use chrono::Utc;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 use crate::AppError;
 
@@ -23,6 +29,15 @@ pub static KEYS: LazyLock<Keys> = LazyLock::new(|| {
     let secret = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     Keys::new(secret.as_bytes())
 });
+
+#[derive(thiserror::Error, Debug)]
+pub enum AuthError {
+    #[error("invalid token")]
+    InvalidToken,
+
+    #[error("token creation error")]
+    TokenCreation,
+}
 
 pub struct Keys {
     encoding: EncodingKey,
@@ -84,11 +99,26 @@ where
         // Extract the token from the authorization header
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
-            .await?;
+            .await
+            .map_err(|_| AuthError::InvalidToken)?;
         // Decode the user data
-        let token_data = decode::<Claims>(bearer.token(), &KEYS.decoding, &Validation::default())?;
+        let token_data = decode::<Claims>(bearer.token(), &KEYS.decoding, &Validation::default())
+            .map_err(|_| AuthError::InvalidToken)?;
 
         Ok(token_data.claims)
+    }
+}
+
+impl IntoResponse for AuthError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match self {
+            AuthError::InvalidToken => StatusCode::BAD_REQUEST,
+            AuthError::TokenCreation => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        let body = Json(json!({
+            "error": self.to_string(),
+        }));
+        (status, body).into_response()
     }
 }
 
@@ -116,6 +146,7 @@ pub async fn authorize(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody
         address,
         exp: (now + Duration::from_secs(86400)).timestamp(),
     };
-    let token = encode(&Header::default(), &claims, &KEYS.encoding)?;
+    let token = encode(&Header::default(), &claims, &KEYS.encoding)
+        .map_err(|_| AuthError::TokenCreation)?;
     Ok(Json(AuthBody::new(token)))
 }
