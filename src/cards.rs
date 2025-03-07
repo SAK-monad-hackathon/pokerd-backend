@@ -68,13 +68,13 @@ impl IntoResponse for CardsError {
 pub async fn hand(
     claims: Claims,
     State(state): State<Arc<RwLock<AppState>>>,
-) -> Result<Json<Hand>, AppError> {
+) -> Result<Json<Hand>, CardsError> {
     let state = state.read().expect("state lock should not be poisoned");
     if matches!(state.phase, GamePhase::WaitingForPlayers) {
-        return Err(anyhow!("match has not yet started").into());
+        return Err(CardsError::MatchNotStarted);
     }
     let Some(player) = state.players.iter().find(|p| p.address == claims.address) else {
-        return Err(anyhow!("player not found in current game").into());
+        return Err(CardsError::PlayerNotFound(claims.address));
     };
     Ok(Json(player.hand.clone()))
 }
