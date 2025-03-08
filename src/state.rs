@@ -91,9 +91,6 @@ pub struct Player {
 
     /// The starting hand of the player
     pub starting_hand: Hand,
-
-    /// The community cards get added to the hand of each player for easy ranking
-    pub hand: Hand,
 }
 
 #[derive(Debug, Default)]
