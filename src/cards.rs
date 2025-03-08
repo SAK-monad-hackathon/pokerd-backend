@@ -1,46 +1,11 @@
 use std::sync::{Arc, RwLock};
 
 use alloy::primitives::Address;
-use anyhow::anyhow;
 use axum::{Json, debug_handler, extract::State, http::StatusCode, response::IntoResponse};
-use derive_more::IsVariant;
-use serde::{Deserialize, Serialize};
+use rs_poker::core::Hand;
 use serde_json::json;
 
-use crate::{
-    AppError,
-    auth::Claims,
-    state::{AppState, GamePhase},
-};
-
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, IsVariant, Serialize, Deserialize,
-)]
-#[repr(u8)]
-pub enum Card {
-    Ace = 1,
-    Two,
-    Three,
-    Four,
-    Five,
-    Six,
-    Seven,
-    Eight,
-    Nine,
-    Ten,
-    Jack,
-    Queen,
-    King,
-}
-
-impl From<Card> for u8 {
-    fn from(value: Card) -> Self {
-        value as u8
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Hand([Card; 2]);
+use crate::{auth::Claims, state::AppState};
 
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
@@ -70,11 +35,11 @@ pub async fn hand(
     State(state): State<Arc<RwLock<AppState>>>,
 ) -> Result<Json<Hand>, CardsError> {
     let state = state.read().expect("state lock should not be poisoned");
-    if matches!(state.phase, GamePhase::WaitingForPlayers) {
+    let Some(players) = state.phase.get_players() else {
         return Err(CardsError::MatchNotStarted);
-    }
-    let Some(player) = state.players.iter().find(|p| p.address == claims.address) else {
+    };
+    let Some(player) = players.iter().find(|p| p.address == claims.address) else {
         return Err(CardsError::PlayerNotFound(claims.address));
     };
-    Ok(Json(player.hand.clone()))
+    Ok(Json(player.starting_hand.clone()))
 }
