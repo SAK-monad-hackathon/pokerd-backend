@@ -93,7 +93,7 @@ pub struct Player {
     pub starting_hand: Hand,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct AppState {
     pub phase: GamePhase,
 }

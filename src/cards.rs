@@ -10,8 +10,8 @@ use crate::{auth::Claims, state::AppState};
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum CardsError {
-    #[error("match has not yet started")]
-    MatchNotStarted,
+    #[error("game has not yet started")]
+    GameNotStarted,
 
     #[error("player not found: {0}")]
     PlayerNotFound(Address),
@@ -20,7 +20,7 @@ pub enum CardsError {
 impl IntoResponse for CardsError {
     fn into_response(self) -> axum::response::Response {
         let status = match self {
-            CardsError::MatchNotStarted | CardsError::PlayerNotFound(_) => StatusCode::BAD_REQUEST,
+            CardsError::GameNotStarted | CardsError::PlayerNotFound(_) => StatusCode::BAD_REQUEST,
         };
         let body = Json(json!({
             "error": self.to_string(),
@@ -36,7 +36,7 @@ pub async fn hand(
 ) -> Result<Json<Hand>, CardsError> {
     let state = state.read().expect("state lock should not be poisoned");
     let Some(players) = state.phase.get_players() else {
-        return Err(CardsError::MatchNotStarted);
+        return Err(CardsError::GameNotStarted);
     };
     let Some(player) = players.iter().find(|p| p.address == claims.address) else {
         return Err(CardsError::PlayerNotFound(claims.address));
