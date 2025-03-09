@@ -3141,7 +3141,6 @@ dependencies = [
  "derive_more 2.0.1",
  "dotenvy",
  "jsonwebtoken",
- "rand 0.9.0",
  "reqwest",
  "rs_poker",
  "serde",
@@ -3376,7 +3375,6 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3779b94aeb87e8bd4e834cee3650289ee9e0d5677f976ecdb6d219e5f4f6cd94"
 dependencies = [
- "log",
  "rand_chacha 0.9.0",
  "rand_core 0.9.3",
  "zerocopy 0.8.22",
