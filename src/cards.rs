@@ -19,7 +19,19 @@ pub async fn hand(
     let Some(player) = players.iter().find(|p| p.address == session.wallet) else {
         return Err(CardsError::PlayerNotFound(session.wallet));
     };
-    Ok(Json(player.starting_hand.clone()))
+    let hand = player.starting_hand.clone();
+    drop(state);
+    Ok(Json(hand))
+}
+
+#[debug_handler]
+pub async fn flop(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Hand>, CardsError> {
+    let state = state.read().expect("state lock should not be poisoned");
+    let Some(flop) = state.phase.get_flop() else {
+        return Err(CardsError::FlopNotAvailable);
+    };
+    drop(state);
+    Ok(Json(flop))
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -28,6 +40,9 @@ pub enum CardsError {
     #[error("game has not yet started")]
     GameNotStarted,
 
+    #[error("flop is not yet available")]
+    FlopNotAvailable,
+
     #[error("player not found: {0}")]
     PlayerNotFound(Address),
 }
@@ -35,7 +50,9 @@ pub enum CardsError {
 impl IntoResponse for CardsError {
     fn into_response(self) -> axum::response::Response {
         let status = match self {
-            CardsError::GameNotStarted | CardsError::PlayerNotFound(_) => StatusCode::BAD_REQUEST,
+            CardsError::GameNotStarted
+            | CardsError::FlopNotAvailable
+            | CardsError::PlayerNotFound(_) => StatusCode::BAD_REQUEST,
         };
         let body = Json(json!({
             "error": self.to_string(),

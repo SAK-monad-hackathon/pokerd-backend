@@ -15,7 +15,7 @@ use serde_json::json;
 use tracing::{debug, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use cards::hand;
+use cards::{flop, hand};
 use privy::{Privy, PrivyConfig};
 use state::{AppState, GamePhase};
 
@@ -51,6 +51,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(healthcheck))
         .route("/hand", get(hand))
+        .route("/flop", get(flop))
         .with_state(state);
 
     // start server

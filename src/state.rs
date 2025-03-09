@@ -84,6 +84,22 @@ impl GamePhase {
             | GamePhase::WaitingForResult { players, .. } => Some(players),
         }
     }
+
+    #[must_use]
+    pub fn get_flop(&self) -> Option<Hand> {
+        match self {
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. } => None,
+            GamePhase::Flop { flop, .. }
+            | GamePhase::WaitingForTurn { flop, .. }
+            | GamePhase::Turn { flop, .. }
+            | GamePhase::WaitingForRiver { flop, .. }
+            | GamePhase::River { flop, .. }
+            | GamePhase::WaitingForResult { flop, .. } => Some(flop.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
