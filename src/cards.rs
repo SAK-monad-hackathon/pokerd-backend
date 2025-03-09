@@ -7,6 +7,21 @@ use serde_json::json;
 
 use crate::{auth::Claims, state::AppState};
 
+#[debug_handler]
+pub async fn hand(
+    claims: Claims,
+    State(state): State<Arc<RwLock<AppState>>>,
+) -> Result<Json<Hand>, CardsError> {
+    let state = state.read().expect("state lock should not be poisoned");
+    let Some(players) = state.phase.get_players() else {
+        return Err(CardsError::GameNotStarted);
+    };
+    let Some(player) = players.iter().find(|p| p.address == claims.address) else {
+        return Err(CardsError::PlayerNotFound(claims.address));
+    };
+    Ok(Json(player.starting_hand.clone()))
+}
+
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum CardsError {
@@ -27,19 +42,4 @@ impl IntoResponse for CardsError {
         }));
         (status, body).into_response()
     }
-}
-
-#[debug_handler]
-pub async fn hand(
-    claims: Claims,
-    State(state): State<Arc<RwLock<AppState>>>,
-) -> Result<Json<Hand>, CardsError> {
-    let state = state.read().expect("state lock should not be poisoned");
-    let Some(players) = state.phase.get_players() else {
-        return Err(CardsError::GameNotStarted);
-    };
-    let Some(player) = players.iter().find(|p| p.address == claims.address) else {
-        return Err(CardsError::PlayerNotFound(claims.address));
-    };
-    Ok(Json(player.starting_hand.clone()))
 }
