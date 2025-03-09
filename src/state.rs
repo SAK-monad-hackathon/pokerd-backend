@@ -1,6 +1,6 @@
 use alloy::primitives::Address;
 use anyhow::{Result, bail};
-use derive_more::IsVariant;
+use derive_more::{Deref, From, Into, IsVariant};
 use rs_poker::core::{Card, FlatDeck, Hand};
 
 use crate::privy::Privy;
@@ -58,10 +58,22 @@ pub enum GamePhase {
     },
 }
 
+#[derive(Debug, Copy, Clone, From, Into, Deref)]
+pub struct Seat(usize);
+
+#[derive(Debug, Clone)]
+pub struct TablePlayer {
+    pub address: Address,
+    pub seat: Seat,
+}
+
 #[derive(Debug, Clone)]
 pub struct Player {
     /// The wallet address of the player
     pub address: Address,
+
+    /// The seat ID of the player
+    pub seat: Seat,
 
     /// The starting hand of the player
     pub starting_hand: Hand,
@@ -70,17 +82,17 @@ pub struct Player {
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub privy: Privy,
-    pub table_players: Vec<Address>,
+    pub table_players: Vec<TablePlayer>,
     pub phase: GamePhase,
 }
 
 impl AppState {
     pub fn set_ready(&mut self) {
-        // TODO send tx to contract to set state
         self.phase = GamePhase::WaitingForDealer;
+        // TODO send tx to contract to set state
     }
 
-    pub fn start_game(&mut self, participants: &[Address]) -> Result<()> {
+    pub fn start_game(&mut self, participants: &[TablePlayer]) -> Result<()> {
         match self.phase {
             GamePhase::WaitingForDealer => {}
             GamePhase::WaitingForPlayers => bail!("still waiting for players"),
@@ -96,7 +108,8 @@ impl AppState {
         let mut deck = FlatDeck::default(); // already shuffled
         for player in participants {
             players.push(Player {
-                address: *player,
+                address: player.address,
+                seat: player.seat,
                 starting_hand: Hand::new_with_cards(vec![
                     deck.deal().expect("should have enough cards"),
                     deck.deal().expect("should have enough cards"),
