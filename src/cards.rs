@@ -16,7 +16,7 @@ pub async fn hand(
 ) -> Result<Json<Hand>, CardsError> {
     info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
-    let Some(players) = state.phase.get_players() else {
+    let Some(players) = state.get_players() else {
         return Err(CardsError::GameNotStarted);
     };
     let Some(player) = players.iter().find(|p| p.address == session.wallet) else {
@@ -32,7 +32,7 @@ pub async fn hand(
 pub async fn flop(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Hand>, CardsError> {
     info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
-    let Some(flop) = state.phase.get_flop() else {
+    let Some(flop) = state.get_flop() else {
         return Err(CardsError::FlopNotAvailable);
     };
     drop(state);
@@ -44,7 +44,7 @@ pub async fn flop(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Han
 pub async fn turn(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Card>, CardsError> {
     info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
-    let Some(turn) = state.phase.get_turn() else {
+    let Some(turn) = state.get_turn() else {
         return Err(CardsError::TurnNotAvailable);
     };
     drop(state);
@@ -56,7 +56,7 @@ pub async fn turn(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Car
 pub async fn river(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Card>, CardsError> {
     info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
-    let Some(river) = state.phase.get_river() else {
+    let Some(river) = state.get_river() else {
         return Err(CardsError::RiverNotAvailable);
     };
     drop(state);

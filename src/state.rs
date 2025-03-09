@@ -58,12 +58,36 @@ pub enum GamePhase {
     },
 }
 
-impl GamePhase {
+#[derive(Debug, Clone)]
+pub struct Player {
+    /// The wallet address of the player
+    pub address: Address,
+
+    /// The starting hand of the player
+    pub starting_hand: Hand,
+}
+
+#[derive(Debug, Clone)]
+pub struct AppState {
+    pub privy: Privy,
+    pub table_players: Vec<Address>,
+    pub phase: GamePhase,
+}
+
+impl AppState {
+    pub fn set_ready(&mut self) {
+        // TODO send tx to contract to set state
+        self.phase = GamePhase::WaitingForDealer;
+    }
+
     pub fn start_game(&mut self, participants: &[Address]) -> Result<()> {
-        match self {
+        match self.phase {
             GamePhase::WaitingForDealer => {}
             GamePhase::WaitingForPlayers => bail!("still waiting for players"),
             _ => bail!("game has already started"),
+        }
+        if participants.len() < 2 {
+            bail!("not enough players");
         }
         if participants.len() > MAX_PLAYERS {
             bail!("too many players");
@@ -79,13 +103,14 @@ impl GamePhase {
                 ]),
             });
         }
-        *self = GamePhase::PreFlop { deck, players };
+        self.phase = GamePhase::PreFlop { deck, players };
+        // TODO send tx to contract to set state
         Ok(())
     }
 
     #[must_use]
     pub fn get_players(&self) -> Option<&Vec<Player>> {
-        match self {
+        match &self.phase {
             GamePhase::WaitingForPlayers | GamePhase::WaitingForDealer => None,
             GamePhase::PreFlop { players, .. }
             | GamePhase::WaitingForFlop { players, .. }
@@ -100,7 +125,7 @@ impl GamePhase {
 
     #[must_use]
     pub fn get_flop(&self) -> Option<Hand> {
-        match self {
+        match &self.phase {
             GamePhase::WaitingForPlayers
             | GamePhase::WaitingForDealer
             | GamePhase::PreFlop { .. }
@@ -116,7 +141,7 @@ impl GamePhase {
 
     #[must_use]
     pub fn get_turn(&self) -> Option<Card> {
-        match self {
+        match self.phase {
             GamePhase::WaitingForPlayers
             | GamePhase::WaitingForDealer
             | GamePhase::PreFlop { .. }
@@ -126,13 +151,13 @@ impl GamePhase {
             GamePhase::Turn { turn, .. }
             | GamePhase::WaitingForRiver { turn, .. }
             | GamePhase::River { turn, .. }
-            | GamePhase::WaitingForResult { turn, .. } => Some(*turn),
+            | GamePhase::WaitingForResult { turn, .. } => Some(turn),
         }
     }
 
     #[must_use]
     pub fn get_river(&self) -> Option<Card> {
-        match self {
+        match self.phase {
             GamePhase::WaitingForPlayers
             | GamePhase::WaitingForDealer
             | GamePhase::PreFlop { .. }
@@ -142,24 +167,8 @@ impl GamePhase {
             | GamePhase::Turn { .. }
             | GamePhase::WaitingForRiver { .. } => None,
             GamePhase::River { river, .. } | GamePhase::WaitingForResult { river, .. } => {
-                Some(*river)
+                Some(river)
             }
         }
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct Player {
-    /// The wallet address of the player
-    pub address: Address,
-
-    /// The starting hand of the player
-    pub starting_hand: Hand,
-}
-
-#[derive(Debug, Clone)]
-pub struct AppState {
-    pub privy: Privy,
-    pub table_players: Vec<Address>,
-    pub phase: GamePhase,
 }
