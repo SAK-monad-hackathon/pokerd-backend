@@ -31,8 +31,15 @@ derive_more = { version = "2.0.1", features = ["full"] }
 dotenvy = "0.15.7"
 jsonwebtoken = "9.3.1"
 rand = { version = "0.9.0", features = ["log"] }
-reqwest = { version = "0.12.12", default-features = false, features = ["charset", "rustls-tls", "http2", "json"] }
-rs_poker = { version = "2.0.0", features = ["serde"] }
+reqwest = { version = "0.12.12", default-features = false, features = [
+    "charset",
+    "rustls-tls",
+    "http2",
+    "json",
+] }
+rs_poker = { version = "3.0.0-beta.31", features = [
+    "serde",
+], git = "https://github.com/elliottneilclark/rs-poker.git", tag = "v3.0.0-beta.31" }
 serde = { version = "1.0.218", features = ["derive"] }
 serde_json = "1.0.140"
 thiserror = "2.0.12"

@@ -43,8 +43,9 @@ async fn main() -> Result<()> {
 
     // init app state
     let state = Arc::new(RwLock::new(AppState {
-        phase: GamePhase::default(),
         privy: Privy::new(PrivyConfig::from_env()?),
+        table_players: vec![],
+        phase: GamePhase::default(),
     }));
 
     // routes

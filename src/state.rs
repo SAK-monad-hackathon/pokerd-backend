@@ -1,8 +1,11 @@
 use alloy::primitives::Address;
+use anyhow::{Result, bail};
 use derive_more::IsVariant;
 use rs_poker::core::{Card, FlatDeck, Hand};
 
 use crate::privy::Privy;
+
+pub const MAX_PLAYERS: usize = 5;
 
 #[derive(Debug, Clone, Default, IsVariant)]
 pub enum GamePhase {
@@ -56,22 +59,32 @@ pub enum GamePhase {
 }
 
 impl GamePhase {
-    #[must_use]
-    pub fn get_players(&self) -> Option<&Vec<Player>> {
+    pub fn start_game(&mut self, participants: &[Address]) -> Result<()> {
         match self {
-            GamePhase::WaitingForPlayers | GamePhase::WaitingForDealer => None,
-            GamePhase::PreFlop { players, .. }
-            | GamePhase::WaitingForFlop { players, .. }
-            | GamePhase::Flop { players, .. }
-            | GamePhase::WaitingForTurn { players, .. }
-            | GamePhase::Turn { players, .. }
-            | GamePhase::WaitingForRiver { players, .. }
-            | GamePhase::River { players, .. }
-            | GamePhase::WaitingForResult { players, .. } => Some(players),
+            GamePhase::WaitingForDealer => {}
+            GamePhase::WaitingForPlayers => bail!("still waiting for players"),
+            _ => bail!("game has already started"),
         }
+        if participants.len() > MAX_PLAYERS {
+            bail!("too many players");
+        }
+        let mut players = vec![];
+        let mut deck = FlatDeck::default(); // already shuffled
+        for player in participants {
+            players.push(Player {
+                address: *player,
+                starting_hand: Hand::new_with_cards(vec![
+                    deck.deal().expect("should have enough cards"),
+                    deck.deal().expect("should have enough cards"),
+                ]),
+            });
+        }
+        *self = GamePhase::PreFlop { deck, players };
+        Ok(())
     }
 
-    pub fn get_players_mut(&mut self) -> Option<&mut Vec<Player>> {
+    #[must_use]
+    pub fn get_players(&self) -> Option<&Vec<Player>> {
         match self {
             GamePhase::WaitingForPlayers | GamePhase::WaitingForDealer => None,
             GamePhase::PreFlop { players, .. }
@@ -146,6 +159,7 @@ pub struct Player {
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    pub phase: GamePhase,
     pub privy: Privy,
+    pub table_players: Vec<Address>,
+    pub phase: GamePhase,
 }
