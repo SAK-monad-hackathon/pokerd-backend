@@ -3095,6 +3095,7 @@ dependencies = [
  "anyhow",
  "axum 0.8.1",
  "axum-extra",
+ "base64 0.22.1",
  "chrono",
  "derive_more 2.0.1",
  "dotenvy",

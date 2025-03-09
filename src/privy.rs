@@ -13,8 +13,9 @@ use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
-use reqwest::{Client, StatusCode};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -100,6 +101,11 @@ impl PrivyConfig {
     }
 }
 
+#[must_use]
+pub fn base64encode(data: &[u8]) -> String {
+    STANDARD.encode(data)
+}
+
 #[derive(Debug, Clone)]
 pub struct Privy {
     pub config: PrivyConfig,
@@ -109,10 +115,31 @@ pub struct Privy {
 impl Privy {
     #[must_use]
     pub fn new(config: PrivyConfig) -> Self {
-        Self {
-            config,
-            client: Client::new(),
-        }
+        let client = reqwest::Client::builder()
+            .default_headers({
+                let mut headers = reqwest::header::HeaderMap::new();
+                headers.insert(
+                    "privy-app-id",
+                    config
+                        .app_id
+                        .parse()
+                        .expect("app ID should be a valid header"),
+                );
+                headers.insert("Content-Type", "application/json".parse().unwrap());
+                headers.insert(
+                    "Authorization",
+                    format!(
+                        "Basic {}",
+                        base64encode(format!("{}:{}", config.app_id, config.app_secret).as_bytes(),)
+                    )
+                    .parse()
+                    .expect("auth token should be a valid header"),
+                );
+                headers
+            })
+            .build()
+            .expect("reqwest client should build successfully");
+        Self { config, client }
     }
 
     pub async fn authenticate_user(&self, access_token: &str) -> Result<UserSession, PrivyError> {
@@ -157,7 +184,7 @@ impl Privy {
 
         if !response.status().is_success() {
             return Err(PrivyError::GetUserByIdFailed(anyhow!(
-                "Failed to get user data: {}",
+                "failed to get user data: {}",
                 response.status()
             )));
         }
