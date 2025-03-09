@@ -146,8 +146,8 @@ impl Privy {
         let claims = self.validate_access_token(access_token)?;
         let user = self.get_user_by_id(&claims.user_id).await?;
 
-        let evm_wallet = find_wallet(&user.linked_accounts, "ethereum", "privy")
-            .map_err(PrivyError::FindWalletError)?;
+        let evm_wallet =
+            find_wallet(&user.linked_accounts, "ethereum").map_err(PrivyError::FindWalletError)?;
         let wallet = Address::parse_checksummed(&evm_wallet.address, None)
             .map_err(|err| PrivyError::FindWalletError(err.into()))?;
 
@@ -193,7 +193,7 @@ impl Privy {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct UserSession {
     pub user_id: String,
     pub session_id: String,
@@ -224,7 +224,7 @@ impl FromRequestParts<Arc<RwLock<AppState>>> for UserSession {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct SignAndSendEvmTransactionRequest {
     pub address: String,
     pub chain_type: String, // Always "ethereum"
@@ -233,13 +233,13 @@ pub struct SignAndSendEvmTransactionRequest {
     pub params: SignAndSendEvmTransactionParams,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct SignAndSendEvmTransactionParams {
     pub transaction: serde_json::Value,
 }
 
 // Request types for signing transactions
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct SignAndSendTransactionRequest {
     pub address: String,
     pub chain_type: String,
@@ -248,19 +248,19 @@ pub struct SignAndSendTransactionRequest {
     pub params: SignAndSendTransactionParams,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct SignAndSendTransactionParams {
     pub transaction: String,
     pub encoding: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct SignAndSendTransactionResponse {
     pub method: String,
     pub data: SignAndSendTransactionData,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct SignAndSendTransactionData {
     pub hash: String,
     pub caip2: String,
@@ -282,7 +282,7 @@ pub struct PrivyClaims {
     pub(crate) session_id: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct User {
     pub created_at: i64,
     pub has_accepted_terms: bool,
@@ -292,7 +292,7 @@ pub struct User {
     pub mfa_methods: Vec<serde_json::Value>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum LinkedAccount {
     #[serde(rename = "email")]
@@ -304,7 +304,7 @@ pub enum LinkedAccount {
     Unknown(serde_json::Map<String, serde_json::Value>),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EmailAccount {
     pub address: String,
     pub first_verified_at: u64,
@@ -312,7 +312,7 @@ pub struct EmailAccount {
     pub verified_at: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WalletAccount {
     pub address: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -342,16 +342,13 @@ pub struct WalletAccount {
 fn find_wallet<'a>(
     linked_accounts: &'a [LinkedAccount],
     chain_type: &str,
-    wallet_client: &str,
 ) -> Result<&'a WalletAccount> {
+    println!("{linked_accounts:?}");
     linked_accounts
         .iter()
         .find_map(|account| match account {
             LinkedAccount::Wallet(wallet) => {
-                if wallet.delegated
-                    && wallet.chain_type == chain_type
-                    && wallet.wallet_client == wallet_client
-                {
+                if wallet.chain_type == chain_type {
                     Some(wallet.as_ref())
                 } else {
                     None
