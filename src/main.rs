@@ -12,7 +12,7 @@ use axum::{
     routing::get,
 };
 use serde_json::json;
-use tracing::{debug, level_filters::LevelFilter};
+use tracing::{debug, info, instrument, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use cards::{flop, hand, river, turn};
@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
                 .with_default_directive(LevelFilter::ERROR.into())
                 .parse_lossy(log_level)
         })
-        .unwrap_or(EnvFilter::new("debug"));
+        .unwrap_or(EnvFilter::new("error,pokerd_backend=debug"));
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
         .with(env_filter)
@@ -63,7 +63,9 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+#[instrument]
 async fn healthcheck() -> &'static str {
+    info!("endpoint called");
     "Server is running"
 }
 

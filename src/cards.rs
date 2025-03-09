@@ -4,14 +4,17 @@ use alloy::primitives::Address;
 use axum::{Json, debug_handler, extract::State, http::StatusCode, response::IntoResponse};
 use rs_poker::core::{Card, Hand};
 use serde_json::json;
+use tracing::{info, instrument};
 
 use crate::{privy::UserSession, state::AppState};
 
 #[debug_handler]
+#[instrument]
 pub async fn hand(
     session: UserSession,
     State(state): State<Arc<RwLock<AppState>>>,
 ) -> Result<Json<Hand>, CardsError> {
+    info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
     let Some(players) = state.phase.get_players() else {
         return Err(CardsError::GameNotStarted);
@@ -25,7 +28,9 @@ pub async fn hand(
 }
 
 #[debug_handler]
+#[instrument]
 pub async fn flop(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Hand>, CardsError> {
+    info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
     let Some(flop) = state.phase.get_flop() else {
         return Err(CardsError::FlopNotAvailable);
@@ -35,7 +40,9 @@ pub async fn flop(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Han
 }
 
 #[debug_handler]
+#[instrument]
 pub async fn turn(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Card>, CardsError> {
+    info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
     let Some(turn) = state.phase.get_turn() else {
         return Err(CardsError::TurnNotAvailable);
@@ -45,7 +52,9 @@ pub async fn turn(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Car
 }
 
 #[debug_handler]
+#[instrument]
 pub async fn river(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Card>, CardsError> {
+    info!("endpoint called");
     let state = state.read().expect("state lock should not be poisoned");
     let Some(river) = state.phase.get_river() else {
         return Err(CardsError::RiverNotAvailable);
