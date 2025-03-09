@@ -44,6 +44,16 @@ pub async fn turn(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Car
     Ok(Json(turn))
 }
 
+#[debug_handler]
+pub async fn river(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Card>, CardsError> {
+    let state = state.read().expect("state lock should not be poisoned");
+    let Some(river) = state.phase.get_river() else {
+        return Err(CardsError::RiverNotAvailable);
+    };
+    drop(state);
+    Ok(Json(river))
+}
+
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum CardsError {
@@ -55,6 +65,9 @@ pub enum CardsError {
 
     #[error("turn card is not yet available")]
     TurnNotAvailable,
+
+    #[error("river card is not yet available")]
+    RiverNotAvailable,
 
     #[error("player not found: {0}")]
     PlayerNotFound(Address),

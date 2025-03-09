@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
         .route("/hand", get(hand))
         .route("/flop", get(flop))
         .route("/turn", get(turn))
+        .route("/river", get(turn))
         .with_state(state);
 
     // start server

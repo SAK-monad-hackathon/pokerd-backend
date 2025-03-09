@@ -116,6 +116,23 @@ impl GamePhase {
             | GamePhase::WaitingForResult { turn, .. } => Some(*turn),
         }
     }
+
+    #[must_use]
+    pub fn get_river(&self) -> Option<Card> {
+        match self {
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. }
+            | GamePhase::Flop { .. }
+            | GamePhase::WaitingForTurn { .. }
+            | GamePhase::Turn { .. }
+            | GamePhase::WaitingForRiver { .. } => None,
+            GamePhase::River { river, .. } | GamePhase::WaitingForResult { river, .. } => {
+                Some(*river)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
