@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use alloy::primitives::Address;
 use axum::{Json, debug_handler, extract::State, http::StatusCode, response::IntoResponse};
-use rs_poker::core::Hand;
+use rs_poker::core::{Card, Hand};
 use serde_json::json;
 
 use crate::{privy::UserSession, state::AppState};
@@ -34,6 +34,16 @@ pub async fn flop(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Han
     Ok(Json(flop))
 }
 
+#[debug_handler]
+pub async fn turn(State(state): State<Arc<RwLock<AppState>>>) -> Result<Json<Card>, CardsError> {
+    let state = state.read().expect("state lock should not be poisoned");
+    let Some(turn) = state.phase.get_turn() else {
+        return Err(CardsError::TurnNotAvailable);
+    };
+    drop(state);
+    Ok(Json(turn))
+}
+
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum CardsError {
@@ -43,17 +53,16 @@ pub enum CardsError {
     #[error("flop is not yet available")]
     FlopNotAvailable,
 
+    #[error("turn card is not yet available")]
+    TurnNotAvailable,
+
     #[error("player not found: {0}")]
     PlayerNotFound(Address),
 }
 
 impl IntoResponse for CardsError {
     fn into_response(self) -> axum::response::Response {
-        let status = match self {
-            CardsError::GameNotStarted
-            | CardsError::FlopNotAvailable
-            | CardsError::PlayerNotFound(_) => StatusCode::BAD_REQUEST,
-        };
+        let status = StatusCode::BAD_REQUEST; // for now all errors map to this error code, use a match if this changes
         let body = Json(json!({
             "error": self.to_string(),
         }));

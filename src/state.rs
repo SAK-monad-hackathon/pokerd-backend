@@ -100,6 +100,22 @@ impl GamePhase {
             | GamePhase::WaitingForResult { flop, .. } => Some(flop.clone()),
         }
     }
+
+    #[must_use]
+    pub fn get_turn(&self) -> Option<Card> {
+        match self {
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. }
+            | GamePhase::Flop { .. }
+            | GamePhase::WaitingForTurn { .. } => None,
+            GamePhase::Turn { turn, .. }
+            | GamePhase::WaitingForRiver { turn, .. }
+            | GamePhase::River { turn, .. }
+            | GamePhase::WaitingForResult { turn, .. } => Some(*turn),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
