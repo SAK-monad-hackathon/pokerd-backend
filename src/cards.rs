@@ -5,19 +5,19 @@ use axum::{Json, debug_handler, extract::State, http::StatusCode, response::Into
 use rs_poker::core::Hand;
 use serde_json::json;
 
-use crate::{auth::Claims, state::AppState};
+use crate::{privy::UserSession, state::AppState};
 
 #[debug_handler]
 pub async fn hand(
-    claims: Claims,
+    session: UserSession,
     State(state): State<Arc<RwLock<AppState>>>,
 ) -> Result<Json<Hand>, CardsError> {
     let state = state.read().expect("state lock should not be poisoned");
     let Some(players) = state.phase.get_players() else {
         return Err(CardsError::GameNotStarted);
     };
-    let Some(player) = players.iter().find(|p| p.address == claims.address) else {
-        return Err(CardsError::PlayerNotFound(claims.address));
+    let Some(player) = players.iter().find(|p| p.address == session.wallet) else {
+        return Err(CardsError::PlayerNotFound(session.wallet));
     };
     Ok(Json(player.starting_hand.clone()))
 }

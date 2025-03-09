@@ -5,12 +5,11 @@ use std::{
 };
 
 use anyhow::Result;
-use auth::authorize;
 use axum::{
     Json, Router,
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
 };
 use serde_json::json;
 use tracing::{debug, level_filters::LevelFilter};
@@ -18,8 +17,8 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberI
 
 use crate::{cards::hand, state::AppState};
 
-pub mod auth;
 pub mod cards;
+pub mod privy;
 pub mod state;
 
 #[tokio::main]
@@ -44,7 +43,6 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(healthcheck))
         .route("/hand", get(hand))
-        .route("/authorize", post(authorize))
         .with_state(state);
 
     // start server
@@ -65,7 +63,7 @@ pub enum AppError {
     Internal(#[from] anyhow::Error),
 
     #[error("auth error: {0}")]
-    Auth(#[from] auth::AuthError),
+    Auth(#[from] privy::PrivyError),
 
     #[error("cards endpoint error: {0}")]
     Cards(#[from] cards::CardsError),

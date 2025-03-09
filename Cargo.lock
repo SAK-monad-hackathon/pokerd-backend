@@ -1801,6 +1801,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "encoding_rs"
+version = "0.8.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75030f3c4f45dafd7586dd6780965a8c7e8e285a5ecb86713e63a79c5b2766f3"
+dependencies = [
+ "cfg-if",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3084,6 +3093,7 @@ dependencies = [
  "derive_more 2.0.1",
  "jsonwebtoken",
  "rand 0.9.0",
+ "reqwest",
  "rs_poker",
  "serde",
  "serde_json",
@@ -3423,8 +3433,10 @@ dependencies = [
  "async-compression",
  "base64 0.22.1",
  "bytes",
+ "encoding_rs",
  "futures-core",
  "futures-util",
+ "h2",
  "http 1.2.0",
  "http-body 1.0.1",
  "http-body-util",
