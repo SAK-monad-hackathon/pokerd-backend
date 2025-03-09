@@ -18,6 +18,7 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tracing::debug;
 
 use crate::state::AppState;
 
@@ -144,12 +145,15 @@ impl Privy {
 
     pub async fn authenticate_user(&self, access_token: &str) -> Result<UserSession, PrivyError> {
         let claims = self.validate_access_token(access_token)?;
+        debug!(?claims, "access token validated");
         let user = self.get_user_by_id(&claims.user_id).await?;
+        debug!(?user, "user found");
 
         let evm_wallet =
             find_wallet(&user.linked_accounts, "ethereum").map_err(PrivyError::FindWalletError)?;
         let wallet = Address::parse_checksummed(&evm_wallet.address, None)
             .map_err(|err| PrivyError::FindWalletError(err.into()))?;
+        debug!(user = user.id, ?wallet, "retrieved wallet for user");
 
         Ok(UserSession {
             user_id: user.id,
@@ -222,48 +226,6 @@ impl FromRequestParts<Arc<RwLock<AppState>>> for UserSession {
         };
         privy.authenticate_user(bearer.token()).await
     }
-}
-
-#[derive(Debug, Serialize)]
-pub struct SignAndSendEvmTransactionRequest {
-    pub address: String,
-    pub chain_type: String, // Always "ethereum"
-    pub method: String,     // Always "eth_sendTransaction"
-    pub caip2: String,      // Format: "eip155:{chain_id}"
-    pub params: SignAndSendEvmTransactionParams,
-}
-
-#[derive(Debug, Serialize)]
-pub struct SignAndSendEvmTransactionParams {
-    pub transaction: serde_json::Value,
-}
-
-// Request types for signing transactions
-#[derive(Debug, Serialize)]
-pub struct SignAndSendTransactionRequest {
-    pub address: String,
-    pub chain_type: String,
-    pub method: String,
-    pub caip2: String,
-    pub params: SignAndSendTransactionParams,
-}
-
-#[derive(Debug, Serialize)]
-pub struct SignAndSendTransactionParams {
-    pub transaction: String,
-    pub encoding: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SignAndSendTransactionResponse {
-    pub method: String,
-    pub data: SignAndSendTransactionData,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SignAndSendTransactionData {
-    pub hash: String,
-    pub caip2: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -343,7 +305,6 @@ fn find_wallet<'a>(
     linked_accounts: &'a [LinkedAccount],
     chain_type: &str,
 ) -> Result<&'a WalletAccount> {
-    println!("{linked_accounts:?}");
     linked_accounts
         .iter()
         .find_map(|account| match account {
