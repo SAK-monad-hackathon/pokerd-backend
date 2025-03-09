@@ -2,6 +2,8 @@ use alloy::primitives::Address;
 use derive_more::IsVariant;
 use rs_poker::core::{Card, FlatDeck, Hand};
 
+use crate::privy::Privy;
+
 #[derive(Debug, Clone, Default, IsVariant)]
 pub enum GamePhase {
     #[default]
@@ -93,7 +95,8 @@ pub struct Player {
     pub starting_hand: Hand,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AppState {
     pub phase: GamePhase,
+    pub privy: Privy,
 }

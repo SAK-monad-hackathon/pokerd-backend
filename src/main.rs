@@ -15,7 +15,9 @@ use serde_json::json;
 use tracing::{debug, level_filters::LevelFilter};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
-use crate::{cards::hand, state::AppState};
+use cards::hand;
+use privy::{Privy, PrivyConfig};
+use state::{AppState, GamePhase};
 
 pub mod cards;
 pub mod privy;
@@ -23,6 +25,9 @@ pub mod state;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // read .env if present
+    let _ = dotenvy::dotenv();
+
     // initialize tracing
     let env_filter = env::var("RUST_LOG")
         .map(|log_level| {
@@ -37,7 +42,10 @@ async fn main() -> Result<()> {
         .init();
 
     // init app state
-    let state = Arc::new(RwLock::new(AppState::default()));
+    let state = Arc::new(RwLock::new(AppState {
+        phase: GamePhase::default(),
+        privy: Privy::new(PrivyConfig::from_env()?),
+    }));
 
     // routes
     let app = Router::new()

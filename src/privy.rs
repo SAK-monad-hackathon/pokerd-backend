@@ -1,3 +1,8 @@
+use std::{
+    fmt,
+    sync::{Arc, RwLock},
+};
+
 use alloy::primitives::Address;
 use anyhow::{Result, anyhow};
 use axum::{
@@ -12,6 +17,8 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use reqwest::{Client, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+
+use crate::state::AppState;
 
 #[derive(thiserror::Error, Debug)]
 pub enum PrivyError {
@@ -66,6 +73,14 @@ pub struct PrivyConfig {
     pub verification_key: String,
 }
 
+impl fmt::Debug for PrivyConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PrivyConfig")
+            .field("app_id", &self.app_id)
+            .finish_non_exhaustive()
+    }
+}
+
 impl PrivyConfig {
     pub fn from_env() -> Result<Self, PrivyError> {
         let app_id =
@@ -85,6 +100,7 @@ impl PrivyConfig {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Privy {
     pub config: PrivyConfig,
     pub client: reqwest::Client,
@@ -118,7 +134,7 @@ impl Privy {
     pub fn validate_access_token(&self, access_token: &str) -> Result<PrivyClaims, PrivyError> {
         let mut validation = Validation::new(Algorithm::ES256);
         validation.set_issuer(&["privy.io"]);
-        validation.set_audience(&[self.config.app_id.clone()]);
+        validation.set_audience(&[&self.config.app_id]);
 
         let key = DecodingKey::from_ec_pem(self.config.verification_key.as_bytes())
             .map_err(PrivyError::ReadDecodingKeyError)?;
@@ -157,20 +173,26 @@ pub struct UserSession {
     pub wallet: Address,
 }
 
-impl<S> FromRequestParts<S> for UserSession
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<Arc<RwLock<AppState>>> for UserSession {
     type Rejection = PrivyError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &Arc<RwLock<AppState>>,
+    ) -> Result<Self, Self::Rejection> {
         // Extract the token from the authorization header
         let TypedHeader(Authorization(bearer)) = parts
             .extract::<TypedHeader<Authorization<Bearer>>>()
             .await
             .map_err(|_| PrivyError::InvalidToken)?;
-        let config = PrivyConfig::from_env()?;
-        let privy = Privy::new(config);
+        // validate token
+        let privy = {
+            state
+                .read()
+                .expect("lock should not be poisoned")
+                .privy
+                .clone() // this is relatively cheap to clone
+        };
         privy.authenticate_user(bearer.token()).await
     }
 }
