@@ -219,7 +219,7 @@ impl AppState {
                 hand.insert(*river);
                 (p, hand.rank_five())
             })
-            .max_set_by_key(|(_, h)| *h)
+            .max_set_by_key(|(_, rank)| *rank)
             .into_iter()
             .map(|(p, _)| p.seat)
             .collect();
