@@ -204,7 +204,12 @@ impl AppState {
         else {
             bail!("too soon");
         };
-        // winners
+        // players and hands
+        let _: Vec<_> = players
+            .iter()
+            .map(|p| (p.seat, p.starting_hand.clone()))
+            .collect();
+        // winner(s)
         let _: Vec<_> = players
             .iter()
             .map(|p| {
@@ -216,9 +221,9 @@ impl AppState {
             })
             .max_set_by_key(|(_, h)| *h)
             .into_iter()
-            .map(|(p, _)| (p.seat, p.starting_hand.clone()))
+            .map(|(p, _)| p.seat)
             .collect();
-        // TODO: send tx to reveal winner(s) (seat and hand)
+        // TODO: send tx to reveal winner(s) and cards of all players
         Ok(())
     }
 
