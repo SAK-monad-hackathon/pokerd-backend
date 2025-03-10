@@ -88,11 +88,13 @@ pub struct AppState {
 
 impl AppState {
     pub fn set_ready(&mut self) {
+        // TODO: send tx to change phase to `waitingForDealer`
         self.phase = GamePhase::WaitingForDealer;
-        // TODO send tx to contract to set state
     }
 
     pub fn start_game(&mut self, participants: &[TablePlayer]) -> Result<()> {
+        // triggered when the phase changed to `WaitingForDealer` according to contract events
+        // need to make sure that we accounted for all the participants which entered before the phase change
         match self.phase {
             GamePhase::WaitingForDealer => {}
             GamePhase::WaitingForPlayers => bail!("still waiting for players"),
@@ -110,14 +112,83 @@ impl AppState {
             players.push(Player {
                 address: player.address,
                 seat: player.seat,
-                starting_hand: Hand::new_with_cards(vec![
-                    deck.deal().expect("should have enough cards"),
-                    deck.deal().expect("should have enough cards"),
-                ]),
+                starting_hand: Hand::new_with_cards((0..2).map(|_| deck.deal().unwrap()).collect()),
             });
         }
         self.phase = GamePhase::PreFlop { deck, players };
-        // TODO send tx to contract to set state
+        // TODO: send tx to change phase to `PreFlop`
+        Ok(())
+    }
+
+    pub fn reveal_flop(&mut self) -> Result<()> {
+        let (mut deck, players) = match &self.phase {
+            GamePhase::WaitingForFlop { deck, players } => (deck.clone(), players.clone()),
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. } => bail!("too soon"),
+            _ => bail!("too late"),
+        };
+        let flop = Hand::new_with_cards((0..3).map(|_| deck.deal().unwrap()).collect());
+        self.phase = GamePhase::Flop {
+            deck,
+            players,
+            flop,
+        };
+        // TODO: send tx to change phase to `Flop`
+        Ok(())
+    }
+
+    pub fn reveal_turn(&mut self) -> Result<()> {
+        let (mut deck, players, flop) = match &self.phase {
+            GamePhase::WaitingForTurn {
+                deck,
+                players,
+                flop,
+            } => (deck.clone(), players.clone(), flop.clone()),
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. }
+            | GamePhase::Flop { .. } => bail!("too soon"),
+            _ => bail!("too late"),
+        };
+        let turn = deck.deal().unwrap();
+        self.phase = GamePhase::Turn {
+            deck,
+            players,
+            flop,
+            turn,
+        };
+        // TODO: send tx to change phase to `Turn`
+        Ok(())
+    }
+
+    pub fn reveal_river(&mut self) -> Result<()> {
+        let (mut deck, players, flop, turn) = match &self.phase {
+            GamePhase::WaitingForRiver {
+                deck,
+                players,
+                flop,
+                turn,
+            } => (deck.clone(), players.clone(), flop.clone(), *turn),
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. }
+            | GamePhase::Flop { .. }
+            | GamePhase::WaitingForTurn { .. }
+            | GamePhase::Turn { .. } => bail!("too soon"),
+            _ => bail!("too late"),
+        };
+        let river = deck.deal().unwrap();
+        self.phase = GamePhase::River {
+            deck,
+            players,
+            flop,
+            turn,
+            river,
+        };
+        // TODO: send tx to change phase to `River`
         Ok(())
     }
 
