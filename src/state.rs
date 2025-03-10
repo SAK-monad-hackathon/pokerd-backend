@@ -59,7 +59,7 @@ pub enum GamePhase {
     },
 }
 
-#[derive(Debug, Copy, Clone, From, Into, Deref)]
+#[derive(Debug, Copy, Clone, From, Into, Deref, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Seat(usize);
 
 #[derive(Debug, Clone)]
@@ -224,6 +224,22 @@ impl AppState {
             .map(|(p, _)| p.seat)
             .collect();
         // TODO: send tx to reveal winner(s) and cards of all players
+        Ok(())
+    }
+
+    pub fn remove_player(&mut self, seat: Seat) -> Result<()> {
+        let players = match &mut self.phase {
+            GamePhase::WaitingForPlayers | GamePhase::WaitingForDealer => bail!("no players yet"),
+            GamePhase::PreFlop { players, .. }
+            | GamePhase::WaitingForFlop { players, .. }
+            | GamePhase::Flop { players, .. }
+            | GamePhase::WaitingForTurn { players, .. }
+            | GamePhase::Turn { players, .. }
+            | GamePhase::WaitingForRiver { players, .. }
+            | GamePhase::River { players, .. }
+            | GamePhase::WaitingForResult { players, .. } => players,
+        };
+        players.retain(|p| p.seat != seat);
         Ok(())
     }
 
