@@ -1,7 +1,8 @@
 use alloy::primitives::Address;
 use anyhow::{Result, bail};
 use derive_more::{Deref, From, Into, IsVariant};
-use rs_poker::core::{Card, FlatDeck, Hand};
+use itertools::Itertools as _;
+use rs_poker::core::{Card, FlatDeck, Hand, Rankable as _};
 
 use crate::privy::Privy;
 
@@ -189,6 +190,35 @@ impl AppState {
             river,
         };
         // TODO: send tx to change phase to `River`
+        Ok(())
+    }
+
+    pub fn announce_winner(&mut self) -> Result<()> {
+        let GamePhase::WaitingForResult {
+            players,
+            flop,
+            turn,
+            river,
+            ..
+        } = &self.phase
+        else {
+            bail!("too soon");
+        };
+        // winners
+        let _: Vec<_> = players
+            .iter()
+            .map(|p| {
+                let mut hand = p.starting_hand.clone();
+                hand.extend(flop.iter());
+                hand.insert(*turn);
+                hand.insert(*river);
+                (p, hand.rank_five())
+            })
+            .max_set_by_key(|(_, h)| *h)
+            .into_iter()
+            .map(|(p, _)| (p.seat, p.starting_hand.clone()))
+            .collect();
+        // TODO: send tx to reveal winner(s) (seat and hand)
         Ok(())
     }
 

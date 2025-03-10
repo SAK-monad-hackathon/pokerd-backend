@@ -3140,6 +3140,7 @@ dependencies = [
  "chrono",
  "derive_more 2.0.1",
  "dotenvy",
+ "itertools 0.14.0",
  "jsonwebtoken",
  "reqwest",
  "rs_poker",
