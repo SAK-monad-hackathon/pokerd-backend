@@ -1,0 +1,30 @@
+# fly.toml app configuration file generated for pokerd-backend on 2025-03-12T21:56:52+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'pokerd-backend'
+primary_region = 'fra'
+
+[build]
+
+[env]
+PORT = '8080'
+PRIVY_APP_ID = 'cm80helbc03923ptiqdc0pvz2'
+PRIVY_VERIFICATION_KEY = """-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEozcRQaB4DaZNQMReyn1PbhC1Ib6tTewBtDcyxKv5X4iUMYnSjZBhT1HrlCqWMwfwGbiJPUAk2I/4fTiiEBbpqw==
+-----END PUBLIC KEY-----"""
+RPC_URL = "https://testnet-rpc.monad.xyz"
+TABLE_ADDRESS = "0x30A62f3F83e410D2c4b2C58c0F820822E9351e2c"
+
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = 'stop'
+auto_start_machines = true
+min_machines_running = 0
+processes = ['app']
+
+[[vm]]
+size = 'shared-cpu-1x'
