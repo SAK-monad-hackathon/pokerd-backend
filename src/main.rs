@@ -4,7 +4,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use alloy::primitives::{Address, address};
+use alloy::{
+    hex::FromHex as _,
+    primitives::{Address, B256, address},
+    signers::local::PrivateKeySigner,
+};
 use anyhow::{Context as _, Result};
 use axum::{
     Json, Router,
@@ -48,6 +52,13 @@ async fn main() -> Result<()> {
     let state = Arc::new(RwLock::new(AppState {
         privy: Privy::new(PrivyConfig::from_env()?),
         rpc_url: env::var("RPC_URL").context("RPC_URL environment variable")?,
+        signer: PrivateKeySigner::from_bytes(&B256::from_hex(
+            env::var("PRIVATE_KEY").context("PRIVATE_KEY environment variable")?,
+        )?)?
+        .into(),
+        table_address: env::var("TABLE_ADDRESS")
+            .context("TABLE_ADDRESS environment variable")?
+            .parse()?,
         table_players: vec![],
         phase: GamePhase::default(),
     }));

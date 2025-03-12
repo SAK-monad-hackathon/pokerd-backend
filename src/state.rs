@@ -1,4 +1,4 @@
-use alloy::primitives::Address;
+use alloy::{network::EthereumWallet, primitives::Address};
 use anyhow::{Result, bail};
 use derive_more::{Deref, From, Into, IsVariant};
 use itertools::Itertools as _;
@@ -84,6 +84,8 @@ pub struct Player {
 pub struct AppState {
     pub privy: Privy,
     pub rpc_url: String,
+    pub signer: EthereumWallet,
+    pub table_address: Address,
     pub table_players: Vec<TablePlayer>,
     pub phase: GamePhase,
 }
