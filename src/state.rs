@@ -73,6 +73,12 @@ impl TryFrom<U256> for Seat {
     }
 }
 
+impl From<Seat> for U256 {
+    fn from(value: Seat) -> Self {
+        U256::from(value.0)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TablePlayer {
     pub address: Address,
@@ -103,7 +109,6 @@ pub struct AppState {
 
 impl AppState {
     pub fn set_ready(&mut self) {
-        // TODO: send tx to change phase to `waitingForDealer`
         self.phase = GamePhase::WaitingForDealer;
     }
 
@@ -145,7 +150,7 @@ impl AppState {
         Ok(())
     }
 
-    pub fn reveal_flop(&mut self) -> Result<()> {
+    pub fn reveal_flop(&mut self) -> Result<Hand> {
         let (mut deck, players) = match &self.phase {
             GamePhase::WaitingForFlop { deck, players } => (deck.clone(), players.clone()),
             GamePhase::WaitingForPlayers
@@ -157,10 +162,9 @@ impl AppState {
         self.phase = GamePhase::Flop {
             deck,
             players,
-            flop,
+            flop: flop.clone(),
         };
-        // TODO: send tx to change phase to `Flop`
-        Ok(())
+        Ok(flop)
     }
 
     pub fn set_waiting_for_turn(&mut self) -> Result<()> {
@@ -184,7 +188,7 @@ impl AppState {
         Ok(())
     }
 
-    pub fn reveal_turn(&mut self) -> Result<()> {
+    pub fn reveal_turn(&mut self) -> Result<Card> {
         let (mut deck, players, flop) = match &self.phase {
             GamePhase::WaitingForTurn {
                 deck,
@@ -206,7 +210,7 @@ impl AppState {
             turn,
         };
         // TODO: send tx to change phase to `Turn`
-        Ok(())
+        Ok(turn)
     }
 
     pub fn set_waiting_for_river(&mut self) -> Result<()> {
@@ -234,7 +238,7 @@ impl AppState {
         Ok(())
     }
 
-    pub fn reveal_river(&mut self) -> Result<()> {
+    pub fn reveal_river(&mut self) -> Result<Card> {
         let (mut deck, players, flop, turn) = match &self.phase {
             GamePhase::WaitingForRiver {
                 deck,
@@ -259,8 +263,7 @@ impl AppState {
             turn,
             river,
         };
-        // TODO: send tx to change phase to `River`
-        Ok(())
+        Ok(river)
     }
 
     pub fn set_waiting_for_result(&mut self) -> Result<()> {
@@ -285,7 +288,8 @@ impl AppState {
         Ok(())
     }
 
-    pub fn announce_winner(&mut self) -> Result<()> {
+    #[allow(clippy::type_complexity)]
+    pub fn announce_winner(&mut self) -> Result<(Vec<(Seat, Hand)>, Vec<Seat>)> {
         let GamePhase::WaitingForResult {
             players,
             flop,
@@ -297,12 +301,12 @@ impl AppState {
             bail!("too soon");
         };
         // players and hands
-        let _: Vec<_> = players
+        let hands: Vec<_> = players
             .iter()
             .map(|p| (p.seat, p.starting_hand.clone()))
             .collect();
         // winner(s)
-        let _: Vec<_> = players
+        let winners: Vec<_> = players
             .iter()
             .map(|p| {
                 let mut hand = p.starting_hand.clone();
@@ -315,8 +319,7 @@ impl AppState {
             .into_iter()
             .map(|(p, _)| p.seat)
             .collect();
-        // TODO: send tx to reveal winner(s) and cards of all players
-        Ok(())
+        Ok((hands, winners))
     }
 
     pub fn remove_player(&mut self, seat: Seat) -> Result<()> {
