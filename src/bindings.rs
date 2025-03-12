@@ -50,6 +50,11 @@ sol! {
             PlayerResult[] results;
         }
 
+
+        function currentRoundId() external returns (uint256 round);
+        function currentPhase() external returns (GamePhases phase);
+        function isPlayerIndexInRound(uint256 index) external view returns (bool inRound);
+        function playerIndices(uint256 index) external view returns (address player);
         function setCurrentPhase(GamePhases newPhase, string calldata cardsToReveal) external;
         function revealShowdownResult(string[] calldata cards, uint256[] calldata winners) external;
         function timeoutCurrentPlayer() external;

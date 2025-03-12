@@ -4,11 +4,12 @@ use std::{
     time::Duration,
 };
 
+use IPokerTable::{currentPhaseReturn, playerIndicesReturn};
 use alloy::{
     contract::{CallBuilder, CallDecoder},
     eips::{BlockNumberOrTag, eip1559::Eip1559Estimation},
     network::Ethereum,
-    primitives::Address,
+    primitives::{Address, U256},
     providers::{Provider, ProviderBuilder},
     rpc::types::{Filter, TransactionReceipt},
     sol_types::SolEvent as _,
@@ -48,6 +49,31 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         .on_http(rpc_url.parse()?);
 
     let table = IPokerTable::IPokerTableInstance::new(table_address, &provider);
+
+    let currentPhaseReturn { phase } = table.currentPhase().call().await?;
+    if !matches!(phase, IPokerTable::GamePhases::WaitingForPlayers) {
+        warn!("a round is already ongoing, need to cancel");
+        let tx = table.cancelCurrentRound();
+        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+        let hash = receipt.transaction_hash;
+        if receipt.status() {
+            info!("transaction {hash} succeeded");
+        } else {
+            warn!("transaction {hash} reverted");
+        }
+        info!("cancelled current round");
+    }
+
+    // retrieve existing players
+    for seat in 0..MAX_PLAYERS {
+        let playerIndicesReturn { player } = table.playerIndices(U256::from(seat)).call().await?;
+        if player != Address::ZERO {
+            state.write().unwrap().table_players.push(TablePlayer {
+                address: player,
+                seat: seat.into(),
+            });
+        }
+    }
 
     let filter = Filter::new()
         .address(table_address)
@@ -177,7 +203,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                             state.announce_winner()?
                         };
                         let tx = table.revealShowdownResult(
-                            (0..=MAX_PLAYERS)
+                            (0..MAX_PLAYERS)
                                 .map(|seat| {
                                     hands
                                         .iter()
