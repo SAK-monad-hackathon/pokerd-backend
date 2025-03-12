@@ -83,6 +83,7 @@ pub struct Player {
 #[derive(Debug, Clone)]
 pub struct AppState {
     pub privy: Privy,
+    pub rpc_url: String,
     pub table_players: Vec<TablePlayer>,
     pub phase: GamePhase,
 }
@@ -121,6 +122,16 @@ impl AppState {
         Ok(())
     }
 
+    pub fn set_waiting_for_flop(&mut self) -> Result<()> {
+        let (deck, players) = match &self.phase {
+            GamePhase::PreFlop { deck, players } => (deck.clone(), players.clone()),
+            GamePhase::WaitingForPlayers | GamePhase::WaitingForDealer => bail!("too soon"),
+            _ => bail!("too late"),
+        };
+        self.phase = GamePhase::WaitingForFlop { deck, players };
+        Ok(())
+    }
+
     pub fn reveal_flop(&mut self) -> Result<()> {
         let (mut deck, players) = match &self.phase {
             GamePhase::WaitingForFlop { deck, players } => (deck.clone(), players.clone()),
@@ -136,6 +147,27 @@ impl AppState {
             flop,
         };
         // TODO: send tx to change phase to `Flop`
+        Ok(())
+    }
+
+    pub fn set_waiting_for_turn(&mut self) -> Result<()> {
+        let (deck, players, flop) = match &self.phase {
+            GamePhase::Flop {
+                deck,
+                players,
+                flop,
+            } => (deck.clone(), players.clone(), flop.clone()),
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. } => bail!("too soon"),
+            _ => bail!("too late"),
+        };
+        self.phase = GamePhase::WaitingForTurn {
+            deck,
+            players,
+            flop,
+        };
         Ok(())
     }
 
@@ -161,6 +193,31 @@ impl AppState {
             turn,
         };
         // TODO: send tx to change phase to `Turn`
+        Ok(())
+    }
+
+    pub fn set_waiting_for_river(&mut self) -> Result<()> {
+        let (deck, players, flop, turn) = match &self.phase {
+            GamePhase::Turn {
+                deck,
+                players,
+                flop,
+                turn,
+            } => (deck.clone(), players.clone(), flop.clone(), *turn),
+            GamePhase::WaitingForPlayers
+            | GamePhase::WaitingForDealer
+            | GamePhase::PreFlop { .. }
+            | GamePhase::WaitingForFlop { .. }
+            | GamePhase::Flop { .. }
+            | GamePhase::WaitingForTurn { .. } => bail!("too soon"),
+            _ => bail!("too late"),
+        };
+        self.phase = GamePhase::WaitingForRiver {
+            deck,
+            players,
+            flop,
+            turn,
+        };
         Ok(())
     }
 
@@ -190,6 +247,28 @@ impl AppState {
             river,
         };
         // TODO: send tx to change phase to `River`
+        Ok(())
+    }
+
+    pub fn set_waiting_for_result(&mut self) -> Result<()> {
+        let (deck, players, flop, turn, river) = match &self.phase {
+            GamePhase::River {
+                deck,
+                players,
+                flop,
+                turn,
+                river,
+            } => (deck.clone(), players.clone(), flop.clone(), *turn, *river),
+            GamePhase::WaitingForResult { .. } => bail!("too late"),
+            _ => bail!("too soon"),
+        };
+        self.phase = GamePhase::WaitingForResult {
+            deck,
+            players,
+            flop,
+            turn,
+            river,
+        };
         Ok(())
     }
 

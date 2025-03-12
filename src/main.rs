@@ -4,7 +4,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use anyhow::Result;
+use alloy::primitives::{Address, address};
+use anyhow::{Context as _, Result};
 use axum::{
     Json, Router,
     http::StatusCode,
@@ -17,9 +18,11 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberI
 
 use cards::{flop, hand, river, turn};
 use privy::{Privy, PrivyConfig};
-use state::{AppState, GamePhase};
+use state::{AppState, GamePhase, TablePlayer};
 
+pub mod bindings;
 pub mod cards;
+pub mod listener;
 pub mod privy;
 pub mod state;
 
@@ -44,9 +47,16 @@ async fn main() -> Result<()> {
     // init app state
     let state = Arc::new(RwLock::new(AppState {
         privy: Privy::new(PrivyConfig::from_env()?),
+        rpc_url: env::var("RPC_URL").context("RPC_URL environment variable")?,
         table_players: vec![],
         phase: GamePhase::default(),
     }));
+
+    // start listener task
+    tokio::spawn({
+        let state = Arc::clone(&state);
+        listener::listen(state)
+    });
 
     // routes
     let app = Router::new()
