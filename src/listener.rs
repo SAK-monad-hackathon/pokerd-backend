@@ -18,7 +18,7 @@ use futures_util::{StreamExt as _, stream};
 use rs_poker::core::{Card, Hand};
 use tracing::{info, warn};
 
-use crate::state::{MAX_PLAYERS, TablePlayer};
+use crate::state::{GamePhase, MAX_PLAYERS, TablePlayer};
 #[allow(clippy::wildcard_imports)]
 use crate::{bindings::*, state::AppState};
 
@@ -199,9 +199,17 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 }
             }
             IPokerTable::PlayerBet::SIGNATURE_HASH => {}
-            IPokerTable::PlayerFolded::SIGNATURE_HASH => {}
-            IPokerTable::PlayerWonWithoutShowdown::SIGNATURE_HASH => {}
-            IPokerTable::ShowdownEnded::SIGNATURE_HASH => {}
+            IPokerTable::PlayerFolded::SIGNATURE_HASH => {
+                let log = IPokerTable::PlayerFolded::decode_log(&log.inner, true)?;
+                {
+                    let mut state = state.write().unwrap();
+                    state.remove_player(log.indexOnTable.try_into()?)?;
+                }
+            }
+            IPokerTable::PlayerWonWithoutShowdown::SIGNATURE_HASH
+            | IPokerTable::ShowdownEnded::SIGNATURE_HASH => {
+                state.write().unwrap().phase = GamePhase::default();
+            }
             _ => {
                 continue;
             }
