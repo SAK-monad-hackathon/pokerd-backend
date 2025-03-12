@@ -4,11 +4,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use alloy::{
-    hex::FromHex as _,
-    primitives::{Address, B256, address},
-    signers::local::PrivateKeySigner,
-};
+use alloy::{hex::FromHex as _, primitives::B256, signers::local::PrivateKeySigner};
 use anyhow::{Context as _, Result};
 use axum::{
     Json, Router,
@@ -22,7 +18,7 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberI
 
 use cards::{flop, hand, river, turn};
 use privy::{Privy, PrivyConfig};
-use state::{AppState, GamePhase, TablePlayer};
+use state::{AppState, GamePhase};
 
 pub mod bindings;
 pub mod cards;
