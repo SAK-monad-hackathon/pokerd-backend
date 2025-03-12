@@ -1,4 +1,7 @@
-use alloy::{network::EthereumWallet, primitives::Address};
+use alloy::{
+    network::EthereumWallet,
+    primitives::{Address, U256},
+};
 use anyhow::{Result, bail};
 use derive_more::{Deref, From, Into, IsVariant};
 use itertools::Itertools as _;
@@ -61,6 +64,14 @@ pub enum GamePhase {
 
 #[derive(Debug, Copy, Clone, From, Into, Deref, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Seat(usize);
+
+impl TryFrom<U256> for Seat {
+    type Error = anyhow::Error;
+
+    fn try_from(value: U256) -> std::result::Result<Self, Self::Error> {
+        Ok(Self(value.try_into()?))
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TablePlayer {
