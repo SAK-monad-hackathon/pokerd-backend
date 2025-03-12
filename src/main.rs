@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
         .with_state(state);
 
     // start server
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     debug!("serving on port 3000");
     axum::serve(listener, app).await?;
     Ok(())
