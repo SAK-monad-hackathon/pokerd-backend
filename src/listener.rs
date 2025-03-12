@@ -17,7 +17,7 @@ use alloy::{
 use anyhow::{Context as _, Result};
 use futures_util::{StreamExt as _, stream};
 use rs_poker::core::{Card, Hand};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::state::{GamePhase, MAX_PLAYERS, TablePlayer};
 #[allow(clippy::wildcard_imports)]
@@ -67,7 +67,10 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
     // retrieve existing players
     for seat in 0..MAX_PLAYERS {
         let playerIndicesReturn { player } = table.playerIndices(U256::from(seat)).call().await?;
-        if player != Address::ZERO {
+        if player == Address::ZERO {
+            debug!("no player for seat {seat}");
+        } else {
+            info!(?player, seat, "found player");
             state.write().unwrap().table_players.push(TablePlayer {
                 address: player,
                 seat: seat.into(),
@@ -92,13 +95,16 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 let log = IPokerTable::PlayerJoined::decode_log(&log.inner, true)?;
                 let num_players = {
                     let mut state = state.write().unwrap();
+                    let seat = log.indexOnTable.try_into()?;
                     state.table_players.push(TablePlayer {
                         address: log.address,
-                        seat: log.indexOnTable.try_into()?,
+                        seat,
                     });
+                    info!(player = ?log.address, seat = seat.to_string(), "new player joined");
                     state.table_players.len()
                 };
                 if num_players > 1 {
+                    info!("we have {num_players} players, round starting");
                     let tx = table
                         .setCurrentPhase(IPokerTable::GamePhases::WaitingForDealer, String::new());
                     let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
@@ -115,17 +121,41 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 {
                     let mut state = state.write().unwrap();
                     state.table_players.retain(|p| p.address != log.address);
-                    state.remove_player(log.indexOnTable.try_into()?)?;
+                    let seat = log.indexOnTable.try_into()?;
+                    state.remove_player(seat)?;
+                    info!(player = ?log.address, seat = seat.to_string(), "player left");
                 }
             }
             IPokerTable::PhaseChanged::SIGNATURE_HASH => {
                 let log = IPokerTable::PhaseChanged::decode_log(&log.inner, true)?;
+                debug!(new_phase = ?log.newPhase, "phase changed");
                 match log.newPhase {
-                    IPokerTable::GamePhases::WaitingForPlayers => {}
+                    IPokerTable::GamePhases::WaitingForPlayers => {
+                        info!("entered waiting for players phase");
+                        let num_players = {
+                            let state = state.read().unwrap();
+                            state.table_players.len()
+                        };
+                        if num_players > 1 {
+                            info!("we have {num_players} players, round starting");
+                            let tx = table.setCurrentPhase(
+                                IPokerTable::GamePhases::WaitingForDealer,
+                                String::new(),
+                            );
+                            let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                            let hash = receipt.transaction_hash;
+                            if receipt.status() {
+                                info!("transaction {hash} succeeded");
+                            } else {
+                                warn!("transaction {hash} reverted");
+                            }
+                        }
+                    }
                     IPokerTable::GamePhases::WaitingForDealer => {
                         {
                             state.write().unwrap().set_ready();
                         }
+                        info!("starting pre-flop phase");
                         let tx =
                             table.setCurrentPhase(IPokerTable::GamePhases::PreFlop, String::new());
                         let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
@@ -137,6 +167,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                         }
                     }
                     IPokerTable::GamePhases::PreFlop => {
+                        info!("started pre-flop phase");
                         // TODO: start timeout and then kick players which haven't bet
                     }
                     IPokerTable::GamePhases::WaitingForFlop => {
@@ -145,6 +176,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                             state.set_waiting_for_flop()?;
                             state.reveal_flop()?
                         };
+                        info!(?flop, "starting flop phase");
                         let tx = table
                             .setCurrentPhase(IPokerTable::GamePhases::Flop, hand_to_string(&flop));
                         let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
@@ -156,6 +188,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                         }
                     }
                     IPokerTable::GamePhases::Flop => {
+                        info!("started flop phase");
                         // TODO: start timeout and then kick players which haven't bet
                     }
                     IPokerTable::GamePhases::WaitingForTurn => {
@@ -164,6 +197,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                             state.set_waiting_for_turn()?;
                             state.reveal_turn()?
                         };
+                        info!(?turn, "starting turn phase");
                         let tx = table
                             .setCurrentPhase(IPokerTable::GamePhases::Turn, card_to_string(turn));
                         let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
@@ -175,6 +209,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                         }
                     }
                     IPokerTable::GamePhases::Turn => {
+                        info!("started turn phase");
                         // TODO: start timeout and then kick players which haven't bet
                     }
                     IPokerTable::GamePhases::WaitingForRiver => {
@@ -183,6 +218,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                             state.set_waiting_for_river()?;
                             state.reveal_river()?
                         };
+                        info!(?river, "starting river phase");
                         let tx = table
                             .setCurrentPhase(IPokerTable::GamePhases::River, card_to_string(river));
                         let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
@@ -194,6 +230,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                         }
                     }
                     IPokerTable::GamePhases::River => {
+                        info!("started river phase");
                         // TODO: start timeout and then kick players which haven't bet
                     }
                     IPokerTable::GamePhases::WaitingForResult => {
@@ -202,6 +239,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                             state.set_waiting_for_result()?;
                             state.announce_winner()?
                         };
+                        info!(?winners, ?hands, "announcing winners");
                         let tx = table.revealShowdownResult(
                             (0..MAX_PLAYERS)
                                 .map(|seat| {
@@ -229,11 +267,14 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 let log = IPokerTable::PlayerFolded::decode_log(&log.inner, true)?;
                 {
                     let mut state = state.write().unwrap();
-                    state.remove_player(log.indexOnTable.try_into()?)?;
+                    let seat = log.indexOnTable.try_into()?;
+                    state.remove_player(seat)?;
+                    info!(player = ?log.address, seat = seat.to_string(), "player folded");
                 }
             }
             IPokerTable::PlayerWonWithoutShowdown::SIGNATURE_HASH
             | IPokerTable::ShowdownEnded::SIGNATURE_HASH => {
+                info!("game ended, resetting for new round");
                 state.write().unwrap().phase = GamePhase::default();
             }
             _ => {

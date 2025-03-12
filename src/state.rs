@@ -3,7 +3,7 @@ use alloy::{
     primitives::{Address, U256},
 };
 use anyhow::{Result, bail};
-use derive_more::{Deref, From, Into, IsVariant};
+use derive_more::{Deref, Display, From, Into, IsVariant};
 use itertools::Itertools as _;
 use rs_poker::core::{Card, FlatDeck, Hand, Rankable as _};
 
@@ -62,7 +62,7 @@ pub enum GamePhase {
     },
 }
 
-#[derive(Debug, Copy, Clone, From, Into, Deref, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, From, Into, Deref, PartialEq, Eq, PartialOrd, Ord, Display)]
 pub struct Seat(usize);
 
 impl TryFrom<U256> for Seat {

@@ -27,6 +27,7 @@ sol! {
         event PlayerWonWithoutShowdown(address indexed winner, uint256 indexOnTable, uint256 pot, GamePhases phase);
         event ShowdownEnded(PlayerResult[] playersData, uint256 pot, string communityCards);
 
+        #[derive(Debug)]
         enum GamePhases {
             WaitingForPlayers,
             WaitingForDealer,
