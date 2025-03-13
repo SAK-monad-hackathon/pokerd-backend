@@ -15,7 +15,6 @@ use alloy::{
     sol_types::SolEvent as _,
 };
 use anyhow::{Context as _, Result};
-use futures_util::{StreamExt as _, stream};
 use rs_poker::core::{Card, Hand};
 use tracing::{debug, info, warn};
 
@@ -32,13 +31,15 @@ const ALL_EVENTS: [&str; 7] = [
     IPokerTable::ShowdownEnded::SIGNATURE,
 ];
 
+#[allow(clippy::too_many_lines)]
 pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
-    let (rpc_url, signer, table_address) = {
+    let (rpc_url, signer, table_address, mut last_processed_block) = {
         let state = state.read().unwrap();
         (
             state.rpc_url.clone(),
             state.signer.clone(),
             state.table_address,
+            state.last_processed_block,
         )
     };
     let wallet = signer.default_signer().address();
@@ -91,31 +92,82 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
     //     .events(ALL_EVENTS)
     //     .from_block(BlockNumberOrTag::Latest);
 
-    let poller = provider.watch_blocks().await?;
+    // let poller = provider.watch_blocks().await?;
 
     // let poller = provider
     //     .watch_logs(&filter)
     //     .await
     //     .context("registering log filter")?;
-    let mut stream = poller.into_stream().flat_map(stream::iter);
+    // let mut stream = poller.into_stream().flat_map(stream::iter);
+    if last_processed_block == 0 {
+        last_processed_block = provider
+            .get_block_number()
+            .await
+            .context("getting latest block number")?
+            - 1;
+        debug!("processing logs from latest block {last_processed_block}");
+    }
 
-    while let Some(block_hash) = stream.next().await {
-        debug!("new block {block_hash}");
+    loop {
+        let latest_block = provider
+            .get_block_number()
+            .await
+            .context("getting latest block number")?;
+        if latest_block <= last_processed_block {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            continue;
+        }
+        debug!(latest_block);
         let filter = Filter::new()
             .address(table_address)
             .events(ALL_EVENTS)
-            .at_block_hash(block_hash);
-        let logs = provider
-            .get_logs(&filter)
-            .await
-            .with_context(|| format!("getting logs for block {block_hash}"))?;
-        for log in logs {
-            handle_event(&provider, Arc::clone(&state), &table, wallet, log).await?;
+            .from_block(last_processed_block + 1)
+            .to_block(latest_block);
+        let logs = provider.get_logs(&filter).await.with_context(|| {
+            format!(
+                "getting logs for block range {} - {latest_block}",
+                last_processed_block + 1
+            )
+        })?;
+        if logs.is_empty() {
+            debug!(
+                start = last_processed_block + 1,
+                end = latest_block,
+                "no logs"
+            );
+        } else {
+            info!(
+                start = last_processed_block + 1,
+                end = latest_block,
+                logs = logs.len(),
+                "got logs"
+            );
         }
+        for log in logs {
+            handle_event(&provider, Arc::clone(&state), &table, wallet, log)
+                .await
+                .context("processing log")?;
+        }
+        last_processed_block = latest_block;
+        state.write().unwrap().last_processed_block = last_processed_block;
     }
-    warn!("stream finished");
 
-    Ok(())
+    // while let Some(block_hash) = stream.next().await {
+    //     debug!("new block {block_hash}");
+    //     let filter = Filter::new()
+    //         .address(table_address)
+    //         .events(ALL_EVENTS)
+    //         .at_block_hash(block_hash);
+    //     let logs = provider
+    //         .get_logs(&filter)
+    //         .await
+    //         .with_context(|| format!("getting logs for block {block_hash}"))?;
+    //     for log in logs {
+    //         handle_event(&provider, Arc::clone(&state), &table, wallet, log).await?;
+    //     }
+    // }
+    // warn!("stream finished");
+    // Ok(())
 }
 
 #[allow(clippy::too_many_lines)]

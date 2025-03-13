@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
             .parse()?,
         table_players: vec![],
         phase: GamePhase::default(),
+        last_processed_block: 0,
     }));
 
     // start listener task

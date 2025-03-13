@@ -105,6 +105,7 @@ pub struct AppState {
     pub table_address: Address,
     pub table_players: Vec<TablePlayer>,
     pub phase: GamePhase,
+    pub last_processed_block: u64,
 }
 
 impl AppState {
