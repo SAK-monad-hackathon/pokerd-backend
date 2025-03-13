@@ -6,9 +6,8 @@ use std::{
 
 use IPokerTable::{currentPhaseReturn, playerIndicesReturn};
 use alloy::{
-    consensus::BlockHeader,
     contract::{CallBuilder, CallDecoder},
-    eips::{BlockNumberOrTag, eip1559::Eip1559Estimation},
+    eips::eip1559::Eip1559Estimation,
     network::Ethereum,
     primitives::{Address, U256},
     providers::{Provider, ProviderBuilder},
