@@ -11,8 +11,12 @@ use alloy::{
     network::Ethereum,
     primitives::{Address, U256},
     providers::{Provider, ProviderBuilder},
-    rpc::types::{Filter, Log, TransactionReceipt},
+    rpc::{
+        self,
+        types::{Filter, Log, TransactionReceipt},
+    },
     sol_types::SolEvent as _,
+    transports::{http::Http, layers::RetryBackoffLayer},
 };
 use anyhow::{Context as _, Result};
 use rs_poker::core::{Card, Hand};
@@ -44,9 +48,21 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         )
     };
     let wallet = signer.default_signer().address();
-    let provider = ProviderBuilder::new()
-        .wallet(signer)
-        .on_http(rpc_url.parse()?);
+    let transport = Http::with_client(
+        reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .expect("reqwest client should be built successfully"),
+        rpc_url.parse()?,
+    );
+    let provider = ProviderBuilder::new().wallet(signer).on_client(
+        rpc::client::ClientBuilder::default()
+            // retry requests max 5 times, with 1 second of initial backoff. Rate limit of 100'000 CU
+            // per second. If the error is an HTTP 429 with backoff information, those parameters are
+            // used automatically
+            .layer(RetryBackoffLayer::new(5, 1000, 100_000))
+            .transport(transport, false),
+    );
 
     let table = IPokerTable::IPokerTableInstance::new(table_address, &provider);
 
