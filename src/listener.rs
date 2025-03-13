@@ -121,7 +121,9 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                     info!("we have {num_players} players, round starting");
                     let tx = table
                         .setCurrentPhase(IPokerTable::GamePhases::WaitingForDealer, String::new());
-                    let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                        .await
+                        .context("submitting tx")?;
                     let hash = receipt.transaction_hash;
                     if receipt.status() {
                         info!("transaction {hash} succeeded");
@@ -137,7 +139,9 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                     let mut state = state.write().unwrap();
                     state.table_players.retain(|p| p.address != log.address);
                     let seat = log.indexOnTable.try_into()?;
-                    state.remove_player(seat)?;
+                    state
+                        .remove_player(seat)
+                        .context("removing player from round because they left")?;
                     info!(player = ?log.address, seat = seat.to_string(), "player left");
                 }
             }
@@ -158,7 +162,9 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                                 IPokerTable::GamePhases::WaitingForDealer,
                                 String::new(),
                             );
-                            let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                            let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                                .await
+                                .context("submitting tx")?;
                             let hash = receipt.transaction_hash;
                             if receipt.status() {
                                 info!("transaction {hash} succeeded");
@@ -174,7 +180,9 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                         info!("starting pre-flop phase");
                         let tx =
                             table.setCurrentPhase(IPokerTable::GamePhases::PreFlop, String::new());
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                            .await
+                            .context("submitting tx")?;
                         let hash = receipt.transaction_hash;
                         if receipt.status() {
                             info!("transaction {hash} succeeded");
@@ -189,13 +197,17 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                     IPokerTable::GamePhases::WaitingForFlop => {
                         let flop = {
                             let mut state = state.write().unwrap();
-                            state.set_waiting_for_flop()?;
-                            state.reveal_flop()?
+                            state
+                                .set_waiting_for_flop()
+                                .context("setting WaitingForFlop phase")?;
+                            state.reveal_flop().context("revealing flop")?
                         };
                         info!(?flop, "starting flop phase");
                         let tx = table
                             .setCurrentPhase(IPokerTable::GamePhases::Flop, hand_to_string(&flop));
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                            .await
+                            .context("submitting tx")?;
                         let hash = receipt.transaction_hash;
                         if receipt.status() {
                             info!("transaction {hash} succeeded");
@@ -210,13 +222,17 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                     IPokerTable::GamePhases::WaitingForTurn => {
                         let turn = {
                             let mut state = state.write().unwrap();
-                            state.set_waiting_for_turn()?;
-                            state.reveal_turn()?
+                            state
+                                .set_waiting_for_turn()
+                                .context("setting WaitingForTurn phase")?;
+                            state.reveal_turn().context("revealing turn card")?
                         };
                         info!(?turn, "starting turn phase");
                         let tx = table
                             .setCurrentPhase(IPokerTable::GamePhases::Turn, card_to_string(turn));
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                            .await
+                            .context("submitting tx")?;
                         let hash = receipt.transaction_hash;
                         if receipt.status() {
                             info!("transaction {hash} succeeded");
@@ -231,13 +247,17 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                     IPokerTable::GamePhases::WaitingForRiver => {
                         let river = {
                             let mut state = state.write().unwrap();
-                            state.set_waiting_for_river()?;
-                            state.reveal_river()?
+                            state
+                                .set_waiting_for_river()
+                                .context("setting WaitingForRiver phase")?;
+                            state.reveal_river().context("revealing river card")?
                         };
                         info!(?river, "starting river phase");
                         let tx = table
                             .setCurrentPhase(IPokerTable::GamePhases::River, card_to_string(river));
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                            .await
+                            .context("submitting tx")?;
                         let hash = receipt.transaction_hash;
                         if receipt.status() {
                             info!("transaction {hash} succeeded");
@@ -252,8 +272,10 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                     IPokerTable::GamePhases::WaitingForResult => {
                         let (hands, winners) = {
                             let mut state = state.write().unwrap();
-                            state.set_waiting_for_result()?;
-                            state.announce_winner()?
+                            state
+                                .set_waiting_for_result()
+                                .context("setting WaitingForResult phase")?;
+                            state.reveal_winner().context("revealing winners")?
                         };
                         info!(?winners, ?hands, "announcing winners");
                         let tx = table.revealShowdownResult(
@@ -267,7 +289,9 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                                 .collect(),
                             winners.into_iter().map(Into::into).collect(),
                         );
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                            .await
+                            .context("submitting tx")?;
                         let hash = receipt.transaction_hash;
                         if receipt.status() {
                             info!("transaction {hash} succeeded");
@@ -285,7 +309,9 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 {
                     let mut state = state.write().unwrap();
                     let seat = log.indexOnTable.try_into()?;
-                    state.remove_player(seat)?;
+                    state
+                        .remove_player(seat)
+                        .context("removing player from round because they folded")?;
                     info!(player = ?log.address, seat = seat.to_string(), "player folded");
                 }
             }

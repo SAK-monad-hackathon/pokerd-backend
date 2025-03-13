@@ -289,7 +289,7 @@ impl AppState {
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn announce_winner(&mut self) -> Result<(Vec<(Seat, Hand)>, Vec<Seat>)> {
+    pub fn reveal_winner(&mut self) -> Result<(Vec<(Seat, Hand)>, Vec<Seat>)> {
         let GamePhase::WaitingForResult {
             players,
             flop,
