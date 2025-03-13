@@ -76,7 +76,8 @@ async fn main() -> Result<()> {
         .with_state(state);
 
     // start server
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    let port = env::var("PORT").unwrap_or("8080".to_string());
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     debug!("serving on port 3000");
     tokio::select! {
         res = listener_handle => {
