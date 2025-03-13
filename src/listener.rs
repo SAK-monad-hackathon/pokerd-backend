@@ -11,7 +11,7 @@ use alloy::{
     network::Ethereum,
     primitives::{Address, U256},
     providers::{Provider, ProviderBuilder},
-    rpc::types::{Filter, TransactionReceipt},
+    rpc::types::{Filter, Log, TransactionReceipt},
     sol_types::SolEvent as _,
 };
 use anyhow::{Context as _, Result};
@@ -20,8 +20,7 @@ use rs_poker::core::{Card, Hand};
 use tracing::{debug, info, warn};
 
 use crate::state::{GamePhase, MAX_PLAYERS, TablePlayer};
-#[allow(clippy::wildcard_imports)]
-use crate::{bindings::*, state::AppState};
+use crate::{bindings::IPokerTable, state::AppState};
 
 const ALL_EVENTS: [&str; 7] = [
     IPokerTable::PlayerJoined::SIGNATURE,
@@ -33,7 +32,6 @@ const ALL_EVENTS: [&str; 7] = [
     IPokerTable::ShowdownEnded::SIGNATURE,
 ];
 
-#[allow(clippy::too_many_lines)]
 pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
     let (rpc_url, signer, table_address) = {
         let state = state.read().unwrap();
@@ -100,194 +98,82 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
     let mut stream = poller.into_stream().flat_map(stream::iter);
 
     while let Some(log) = stream.next().await {
-        let Some(topic) = log.topic0() else {
-            continue;
-        };
-        match *topic {
-            IPokerTable::PlayerJoined::SIGNATURE_HASH => {
-                let log = IPokerTable::PlayerJoined::decode_log(&log.inner, true)
-                    .context("decoding log for PlayerJoined")?;
-                let num_players = {
-                    let mut state = state.write().unwrap();
-                    let seat = log.indexOnTable.try_into()?;
-                    state.table_players.push(TablePlayer {
-                        address: log.address,
-                        seat,
-                    });
-                    info!(player = ?log.address, seat = seat.to_string(), "new player joined");
-                    state.table_players.len()
-                };
-                if num_players > 1 {
-                    info!("we have {num_players} players, round starting");
-                    let tx = table
-                        .setCurrentPhase(IPokerTable::GamePhases::WaitingForDealer, String::new());
-                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
-                        .await
-                        .context("submitting tx")?;
-                    let hash = receipt.transaction_hash;
-                    if receipt.status() {
-                        info!("transaction {hash} succeeded");
-                    } else {
-                        warn!("transaction {hash} reverted");
-                    }
+        handle_event(&provider, Arc::clone(&state), &table, wallet, log).await?;
+    }
+    warn!("stream finished");
+
+    Ok(())
+}
+
+#[allow(clippy::too_many_lines)]
+pub async fn handle_event<P: Provider>(
+    provider: P,
+    state: Arc<RwLock<AppState>>,
+    table: &IPokerTable::IPokerTableInstance<(), P>,
+    wallet: Address,
+    log: Log,
+) -> Result<()> {
+    let Some(topic) = log.topic0() else {
+        return Ok(());
+    };
+    match *topic {
+        IPokerTable::PlayerJoined::SIGNATURE_HASH => {
+            let log = IPokerTable::PlayerJoined::decode_log(&log.inner, true)
+                .context("decoding log for PlayerJoined")?;
+            let num_players = {
+                let mut state = state.write().unwrap();
+                let seat = log.indexOnTable.try_into()?;
+                state.table_players.push(TablePlayer {
+                    address: log.address,
+                    seat,
+                });
+                info!(player = ?log.address, seat = seat.to_string(), "new player joined");
+                state.table_players.len()
+            };
+            if num_players > 1 {
+                info!("we have {num_players} players, round starting");
+                let tx =
+                    table.setCurrentPhase(IPokerTable::GamePhases::WaitingForDealer, String::new());
+                let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                    .await
+                    .context("submitting tx")?;
+                let hash = receipt.transaction_hash;
+                if receipt.status() {
+                    info!("transaction {hash} succeeded");
+                } else {
+                    warn!("transaction {hash} reverted");
                 }
             }
-            IPokerTable::PlayerLeft::SIGNATURE_HASH => {
-                let log = IPokerTable::PlayerLeft::decode_log(&log.inner, true)
-                    .context("decoding log for PlayerLeft")?;
-                {
-                    let mut state = state.write().unwrap();
-                    state.table_players.retain(|p| p.address != log.address);
-                    let seat = log.indexOnTable.try_into()?;
-                    state
-                        .remove_player(seat)
-                        .context("removing player from round because they left")?;
-                    info!(player = ?log.address, seat = seat.to_string(), "player left");
-                }
+        }
+        IPokerTable::PlayerLeft::SIGNATURE_HASH => {
+            let log = IPokerTable::PlayerLeft::decode_log(&log.inner, true)
+                .context("decoding log for PlayerLeft")?;
+            {
+                let mut state = state.write().unwrap();
+                state.table_players.retain(|p| p.address != log.address);
+                let seat = log.indexOnTable.try_into()?;
+                state
+                    .remove_player(seat)
+                    .context("removing player from round because they left")?;
+                info!(player = ?log.address, seat = seat.to_string(), "player left");
             }
-            IPokerTable::PhaseChanged::SIGNATURE_HASH => {
-                let log = IPokerTable::PhaseChanged::decode_log(&log.inner, true)
-                    .context("decoding log for PhaseChanged")?;
-                debug!(new_phase = ?log.newPhase, "phase changed");
-                match log.newPhase {
-                    IPokerTable::GamePhases::WaitingForPlayers => {
-                        info!("entered waiting for players phase");
-                        let num_players = {
-                            let state = state.read().unwrap();
-                            state.table_players.len()
-                        };
-                        if num_players > 1 {
-                            info!("we have {num_players} players, round starting");
-                            let tx = table.setCurrentPhase(
-                                IPokerTable::GamePhases::WaitingForDealer,
-                                String::new(),
-                            );
-                            let receipt = submit_tx_with_retry(&provider, wallet, tx)
-                                .await
-                                .context("submitting tx")?;
-                            let hash = receipt.transaction_hash;
-                            if receipt.status() {
-                                info!("transaction {hash} succeeded");
-                            } else {
-                                warn!("transaction {hash} reverted");
-                            }
-                        }
-                    }
-                    IPokerTable::GamePhases::WaitingForDealer => {
-                        {
-                            state.write().unwrap().set_ready();
-                        }
-                        info!("starting pre-flop phase");
-                        let tx =
-                            table.setCurrentPhase(IPokerTable::GamePhases::PreFlop, String::new());
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
-                            .await
-                            .context("submitting tx")?;
-                        let hash = receipt.transaction_hash;
-                        if receipt.status() {
-                            info!("transaction {hash} succeeded");
-                        } else {
-                            warn!("transaction {hash} reverted");
-                        }
-                    }
-                    IPokerTable::GamePhases::PreFlop => {
-                        info!("started pre-flop phase");
-                        // TODO: start timeout and then kick players which haven't bet
-                    }
-                    IPokerTable::GamePhases::WaitingForFlop => {
-                        let flop = {
-                            let mut state = state.write().unwrap();
-                            state
-                                .set_waiting_for_flop()
-                                .context("setting WaitingForFlop phase")?;
-                            state.reveal_flop().context("revealing flop")?
-                        };
-                        info!(?flop, "starting flop phase");
-                        let tx = table
-                            .setCurrentPhase(IPokerTable::GamePhases::Flop, hand_to_string(&flop));
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
-                            .await
-                            .context("submitting tx")?;
-                        let hash = receipt.transaction_hash;
-                        if receipt.status() {
-                            info!("transaction {hash} succeeded");
-                        } else {
-                            warn!("transaction {hash} reverted");
-                        }
-                    }
-                    IPokerTable::GamePhases::Flop => {
-                        info!("started flop phase");
-                        // TODO: start timeout and then kick players which haven't bet
-                    }
-                    IPokerTable::GamePhases::WaitingForTurn => {
-                        let turn = {
-                            let mut state = state.write().unwrap();
-                            state
-                                .set_waiting_for_turn()
-                                .context("setting WaitingForTurn phase")?;
-                            state.reveal_turn().context("revealing turn card")?
-                        };
-                        info!(?turn, "starting turn phase");
-                        let tx = table
-                            .setCurrentPhase(IPokerTable::GamePhases::Turn, card_to_string(turn));
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
-                            .await
-                            .context("submitting tx")?;
-                        let hash = receipt.transaction_hash;
-                        if receipt.status() {
-                            info!("transaction {hash} succeeded");
-                        } else {
-                            warn!("transaction {hash} reverted");
-                        }
-                    }
-                    IPokerTable::GamePhases::Turn => {
-                        info!("started turn phase");
-                        // TODO: start timeout and then kick players which haven't bet
-                    }
-                    IPokerTable::GamePhases::WaitingForRiver => {
-                        let river = {
-                            let mut state = state.write().unwrap();
-                            state
-                                .set_waiting_for_river()
-                                .context("setting WaitingForRiver phase")?;
-                            state.reveal_river().context("revealing river card")?
-                        };
-                        info!(?river, "starting river phase");
-                        let tx = table
-                            .setCurrentPhase(IPokerTable::GamePhases::River, card_to_string(river));
-                        let receipt = submit_tx_with_retry(&provider, wallet, tx)
-                            .await
-                            .context("submitting tx")?;
-                        let hash = receipt.transaction_hash;
-                        if receipt.status() {
-                            info!("transaction {hash} succeeded");
-                        } else {
-                            warn!("transaction {hash} reverted");
-                        }
-                    }
-                    IPokerTable::GamePhases::River => {
-                        info!("started river phase");
-                        // TODO: start timeout and then kick players which haven't bet
-                    }
-                    IPokerTable::GamePhases::WaitingForResult => {
-                        let (hands, winners) = {
-                            let mut state = state.write().unwrap();
-                            state
-                                .set_waiting_for_result()
-                                .context("setting WaitingForResult phase")?;
-                            state.reveal_winner().context("revealing winners")?
-                        };
-                        info!(?winners, ?hands, "announcing winners");
-                        let tx = table.revealShowdownResult(
-                            (0..MAX_PLAYERS)
-                                .map(|seat| {
-                                    hands
-                                        .iter()
-                                        .find(|(s, _)| **s == seat)
-                                        .map_or(String::new(), |(_, h)| hand_to_string(h))
-                                })
-                                .collect(),
-                            winners.into_iter().map(Into::into).collect(),
+        }
+        IPokerTable::PhaseChanged::SIGNATURE_HASH => {
+            let log = IPokerTable::PhaseChanged::decode_log(&log.inner, true)
+                .context("decoding log for PhaseChanged")?;
+            debug!(new_phase = ?log.newPhase, "phase changed");
+            match log.newPhase {
+                IPokerTable::GamePhases::WaitingForPlayers => {
+                    info!("entered waiting for players phase");
+                    let num_players = {
+                        let state = state.read().unwrap();
+                        state.table_players.len()
+                    };
+                    if num_players > 1 {
+                        info!("we have {num_players} players, round starting");
+                        let tx = table.setCurrentPhase(
+                            IPokerTable::GamePhases::WaitingForDealer,
+                            String::new(),
                         );
                         let receipt = submit_tx_with_retry(&provider, wallet, tx)
                             .await
@@ -299,34 +185,159 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                             warn!("transaction {hash} reverted");
                         }
                     }
-                    IPokerTable::GamePhases::__Invalid => continue,
                 }
-            }
-            IPokerTable::PlayerBet::SIGNATURE_HASH => {}
-            IPokerTable::PlayerFolded::SIGNATURE_HASH => {
-                let log = IPokerTable::PlayerFolded::decode_log(&log.inner, true)
-                    .context("decoding log for PlayerFolded")?;
-                {
-                    let mut state = state.write().unwrap();
-                    let seat = log.indexOnTable.try_into()?;
-                    state
-                        .remove_player(seat)
-                        .context("removing player from round because they folded")?;
-                    info!(player = ?log.address, seat = seat.to_string(), "player folded");
+                IPokerTable::GamePhases::WaitingForDealer => {
+                    {
+                        state.write().unwrap().set_ready();
+                    }
+                    info!("starting pre-flop phase");
+                    let tx = table.setCurrentPhase(IPokerTable::GamePhases::PreFlop, String::new());
+                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                        .await
+                        .context("submitting tx")?;
+                    let hash = receipt.transaction_hash;
+                    if receipt.status() {
+                        info!("transaction {hash} succeeded");
+                    } else {
+                        warn!("transaction {hash} reverted");
+                    }
                 }
-            }
-            IPokerTable::PlayerWonWithoutShowdown::SIGNATURE_HASH
-            | IPokerTable::ShowdownEnded::SIGNATURE_HASH => {
-                info!("game ended, resetting for new round");
-                state.write().unwrap().phase = GamePhase::default();
-            }
-            _ => {
-                continue;
+                IPokerTable::GamePhases::PreFlop => {
+                    info!("started pre-flop phase");
+                    // TODO: start timeout and then kick players which haven't bet
+                }
+                IPokerTable::GamePhases::WaitingForFlop => {
+                    let flop = {
+                        let mut state = state.write().unwrap();
+                        state
+                            .set_waiting_for_flop()
+                            .context("setting WaitingForFlop phase")?;
+                        state.reveal_flop().context("revealing flop")?
+                    };
+                    info!(?flop, "starting flop phase");
+                    let tx =
+                        table.setCurrentPhase(IPokerTable::GamePhases::Flop, hand_to_string(&flop));
+                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                        .await
+                        .context("submitting tx")?;
+                    let hash = receipt.transaction_hash;
+                    if receipt.status() {
+                        info!("transaction {hash} succeeded");
+                    } else {
+                        warn!("transaction {hash} reverted");
+                    }
+                }
+                IPokerTable::GamePhases::Flop => {
+                    info!("started flop phase");
+                    // TODO: start timeout and then kick players which haven't bet
+                }
+                IPokerTable::GamePhases::WaitingForTurn => {
+                    let turn = {
+                        let mut state = state.write().unwrap();
+                        state
+                            .set_waiting_for_turn()
+                            .context("setting WaitingForTurn phase")?;
+                        state.reveal_turn().context("revealing turn card")?
+                    };
+                    info!(?turn, "starting turn phase");
+                    let tx =
+                        table.setCurrentPhase(IPokerTable::GamePhases::Turn, card_to_string(turn));
+                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                        .await
+                        .context("submitting tx")?;
+                    let hash = receipt.transaction_hash;
+                    if receipt.status() {
+                        info!("transaction {hash} succeeded");
+                    } else {
+                        warn!("transaction {hash} reverted");
+                    }
+                }
+                IPokerTable::GamePhases::Turn => {
+                    info!("started turn phase");
+                    // TODO: start timeout and then kick players which haven't bet
+                }
+                IPokerTable::GamePhases::WaitingForRiver => {
+                    let river = {
+                        let mut state = state.write().unwrap();
+                        state
+                            .set_waiting_for_river()
+                            .context("setting WaitingForRiver phase")?;
+                        state.reveal_river().context("revealing river card")?
+                    };
+                    info!(?river, "starting river phase");
+                    let tx = table
+                        .setCurrentPhase(IPokerTable::GamePhases::River, card_to_string(river));
+                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                        .await
+                        .context("submitting tx")?;
+                    let hash = receipt.transaction_hash;
+                    if receipt.status() {
+                        info!("transaction {hash} succeeded");
+                    } else {
+                        warn!("transaction {hash} reverted");
+                    }
+                }
+                IPokerTable::GamePhases::River => {
+                    info!("started river phase");
+                    // TODO: start timeout and then kick players which haven't bet
+                }
+                IPokerTable::GamePhases::WaitingForResult => {
+                    let (hands, winners) = {
+                        let mut state = state.write().unwrap();
+                        state
+                            .set_waiting_for_result()
+                            .context("setting WaitingForResult phase")?;
+                        state.reveal_winner().context("revealing winners")?
+                    };
+                    info!(?winners, ?hands, "announcing winners");
+                    let tx = table.revealShowdownResult(
+                        (0..MAX_PLAYERS)
+                            .map(|seat| {
+                                hands
+                                    .iter()
+                                    .find(|(s, _)| **s == seat)
+                                    .map_or(String::new(), |(_, h)| hand_to_string(h))
+                            })
+                            .collect(),
+                        winners.into_iter().map(Into::into).collect(),
+                    );
+                    let receipt = submit_tx_with_retry(&provider, wallet, tx)
+                        .await
+                        .context("submitting tx")?;
+                    let hash = receipt.transaction_hash;
+                    if receipt.status() {
+                        info!("transaction {hash} succeeded");
+                    } else {
+                        warn!("transaction {hash} reverted");
+                    }
+                }
+                IPokerTable::GamePhases::__Invalid => {
+                    return Ok(());
+                }
             }
         }
+        IPokerTable::PlayerBet::SIGNATURE_HASH => {}
+        IPokerTable::PlayerFolded::SIGNATURE_HASH => {
+            let log = IPokerTable::PlayerFolded::decode_log(&log.inner, true)
+                .context("decoding log for PlayerFolded")?;
+            {
+                let mut state = state.write().unwrap();
+                let seat = log.indexOnTable.try_into()?;
+                state
+                    .remove_player(seat)
+                    .context("removing player from round because they folded")?;
+                info!(player = ?log.address, seat = seat.to_string(), "player folded");
+            }
+        }
+        IPokerTable::PlayerWonWithoutShowdown::SIGNATURE_HASH
+        | IPokerTable::ShowdownEnded::SIGNATURE_HASH => {
+            info!("game ended, resetting for new round");
+            state.write().unwrap().phase = GamePhase::default();
+        }
+        _ => {
+            return Ok(());
+        }
     }
-    warn!("stream finished");
-
     Ok(())
 }
 
