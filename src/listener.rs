@@ -6,6 +6,7 @@ use std::{
 
 use IPokerTable::{currentPhaseReturn, playerIndicesReturn};
 use alloy::{
+    consensus::BlockHeader,
     contract::{CallBuilder, CallDecoder},
     eips::{BlockNumberOrTag, eip1559::Eip1559Estimation},
     network::Ethereum,
@@ -86,19 +87,32 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         }
     }
 
-    let filter = Filter::new()
-        .address(table_address)
-        .events(ALL_EVENTS)
-        .from_block(BlockNumberOrTag::Latest);
+    // let filter = Filter::new()
+    //     .address(table_address)
+    //     .events(ALL_EVENTS)
+    //     .from_block(BlockNumberOrTag::Latest);
 
-    let poller = provider
-        .watch_logs(&filter)
-        .await
-        .context("registering log filter")?;
+    let poller = provider.watch_blocks().await?;
+
+    // let poller = provider
+    //     .watch_logs(&filter)
+    //     .await
+    //     .context("registering log filter")?;
     let mut stream = poller.into_stream().flat_map(stream::iter);
 
-    while let Some(log) = stream.next().await {
-        handle_event(&provider, Arc::clone(&state), &table, wallet, log).await?;
+    while let Some(block_hash) = stream.next().await {
+        debug!("new block {block_hash}");
+        let filter = Filter::new()
+            .address(table_address)
+            .events(ALL_EVENTS)
+            .at_block_hash(block_hash);
+        let logs = provider
+            .get_logs(&filter)
+            .await
+            .with_context(|| format!("getting logs for block {block_hash}"))?;
+        for log in logs {
+            handle_event(&provider, Arc::clone(&state), &table, wallet, log).await?;
+        }
     }
     warn!("stream finished");
 
