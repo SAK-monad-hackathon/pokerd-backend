@@ -13,7 +13,7 @@ use axum::{
     routing::get,
 };
 use serde_json::json;
-use tracing::{debug, info, instrument, level_filters::LevelFilter};
+use tracing::{debug, info, instrument, level_filters::LevelFilter, warn};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt as _, util::SubscriberInitExt as _};
 
 use cards::{flop, hand, river, turn};
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
     }));
 
     // start listener task
-    tokio::spawn({
+    let listener_handle = tokio::spawn({
         let state = Arc::clone(&state);
         listener::listen(state)
     });
@@ -77,7 +77,14 @@ async fn main() -> Result<()> {
     // start server
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     debug!("serving on port 3000");
-    axum::serve(listener, app).await?;
+    tokio::select! {
+        res = listener_handle => {
+            res??;
+        }
+        _ = axum::serve(listener, app) => {
+            warn!("server stopped");
+        }
+    }
     Ok(())
 }
 
