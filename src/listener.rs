@@ -57,10 +57,10 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
     );
     let provider = ProviderBuilder::new().wallet(signer).on_client(
         rpc::client::ClientBuilder::default()
-            // retry requests max 5 times, with 1 second of initial backoff. Rate limit of 100'000 CU
+            // retry requests max 5 times, with 1 second of initial backoff. Rate limit of 1000 CU
             // per second. If the error is an HTTP 429 with backoff information, those parameters are
             // used automatically
-            .layer(RetryBackoffLayer::new(5, 1000, 100_000))
+            .layer(RetryBackoffLayer::new(5, 1000, 1000))
             .transport(transport, false),
     );
 
@@ -125,7 +125,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         debug!("processing logs from latest block {last_processed_block}");
     }
 
-    let mut interval = tokio::time::interval(Duration::from_secs(2));
+    let mut interval = tokio::time::interval(Duration::from_secs(4));
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {
