@@ -16,7 +16,7 @@ use alloy::{
 };
 use anyhow::{Context as _, Result};
 use rs_poker::core::{Card, Hand};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::state::{GamePhase, MAX_PLAYERS, TablePlayer};
 use crate::{bindings::IPokerTable, state::AppState};
@@ -117,7 +117,7 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
             tokio::time::sleep(Duration::from_millis(200)).await;
             continue;
         }
-        debug!(latest_block);
+        trace!(latest_block);
         let filter = Filter::new()
             .address(table_address)
             .events(ALL_EVENTS)
@@ -130,13 +130,13 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
             )
         })?;
         if logs.is_empty() {
-            debug!(
+            trace!(
                 start = last_processed_block + 1,
                 end = latest_block,
                 "no logs"
             );
         } else {
-            info!(
+            debug!(
                 start = last_processed_block + 1,
                 end = latest_block,
                 logs = logs.len(),
