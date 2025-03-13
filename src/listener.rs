@@ -50,11 +50,17 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
 
     let table = IPokerTable::IPokerTableInstance::new(table_address, &provider);
 
-    let currentPhaseReturn { phase } = table.currentPhase().call().await?;
+    let currentPhaseReturn { phase } = table
+        .currentPhase()
+        .call()
+        .await
+        .context("getting current phase")?;
     if !matches!(phase, IPokerTable::GamePhases::WaitingForPlayers) {
         warn!("a round is already ongoing, need to cancel");
         let tx = table.cancelCurrentRound();
-        let receipt = submit_tx_with_retry(&provider, wallet, tx).await?;
+        let receipt = submit_tx_with_retry(&provider, wallet, tx)
+            .await
+            .context("sending round cancellation tx")?;
         let hash = receipt.transaction_hash;
         if receipt.status() {
             info!("transaction {hash} succeeded");
@@ -66,7 +72,11 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
 
     // retrieve existing players
     for seat in 0..MAX_PLAYERS {
-        let playerIndicesReturn { player } = table.playerIndices(U256::from(seat)).call().await?;
+        let playerIndicesReturn { player } = table
+            .playerIndices(U256::from(seat))
+            .call()
+            .await
+            .context("getting player seat")?;
         if player == Address::ZERO {
             debug!("no player for seat {seat}");
         } else {
@@ -83,7 +93,10 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         .events(ALL_EVENTS)
         .from_block(BlockNumberOrTag::Latest);
 
-    let poller = provider.watch_logs(&filter).await?;
+    let poller = provider
+        .watch_logs(&filter)
+        .await
+        .context("registering log filter")?;
     let mut stream = poller.into_stream().flat_map(stream::iter);
 
     while let Some(log) = stream.next().await {
@@ -92,7 +105,8 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         };
         match *topic {
             IPokerTable::PlayerJoined::SIGNATURE_HASH => {
-                let log = IPokerTable::PlayerJoined::decode_log(&log.inner, true)?;
+                let log = IPokerTable::PlayerJoined::decode_log(&log.inner, true)
+                    .context("decoding log for PlayerJoined")?;
                 let num_players = {
                     let mut state = state.write().unwrap();
                     let seat = log.indexOnTable.try_into()?;
@@ -117,7 +131,8 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 }
             }
             IPokerTable::PlayerLeft::SIGNATURE_HASH => {
-                let log = IPokerTable::PlayerLeft::decode_log(&log.inner, true)?;
+                let log = IPokerTable::PlayerLeft::decode_log(&log.inner, true)
+                    .context("decoding log for PlayerLeft")?;
                 {
                     let mut state = state.write().unwrap();
                     state.table_players.retain(|p| p.address != log.address);
@@ -127,7 +142,8 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 }
             }
             IPokerTable::PhaseChanged::SIGNATURE_HASH => {
-                let log = IPokerTable::PhaseChanged::decode_log(&log.inner, true)?;
+                let log = IPokerTable::PhaseChanged::decode_log(&log.inner, true)
+                    .context("decoding log for PhaseChanged")?;
                 debug!(new_phase = ?log.newPhase, "phase changed");
                 match log.newPhase {
                     IPokerTable::GamePhases::WaitingForPlayers => {
@@ -264,7 +280,8 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
             }
             IPokerTable::PlayerBet::SIGNATURE_HASH => {}
             IPokerTable::PlayerFolded::SIGNATURE_HASH => {
-                let log = IPokerTable::PlayerFolded::decode_log(&log.inner, true)?;
+                let log = IPokerTable::PlayerFolded::decode_log(&log.inner, true)
+                    .context("decoding log for PlayerFolded")?;
                 {
                     let mut state = state.write().unwrap();
                     let seat = log.indexOnTable.try_into()?;
