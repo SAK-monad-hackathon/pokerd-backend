@@ -16,6 +16,7 @@ use alloy::{
 };
 use anyhow::{Context as _, Result};
 use rs_poker::core::{Card, Hand};
+use tokio::time::MissedTickBehavior;
 use tracing::{debug, info, trace, warn};
 
 use crate::state::{GamePhase, MAX_PLAYERS, TablePlayer};
@@ -108,13 +109,16 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
         debug!("processing logs from latest block {last_processed_block}");
     }
 
+    let mut interval = tokio::time::interval(Duration::from_secs(2));
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
     loop {
+        interval.tick().await;
         let latest_block = provider
             .get_block_number()
             .await
             .context("getting latest block number")?;
         if latest_block <= last_processed_block {
-            tokio::time::sleep(Duration::from_millis(200)).await;
             continue;
         }
         trace!(latest_block);
@@ -129,6 +133,17 @@ pub async fn listen(state: Arc<RwLock<AppState>>) -> Result<()> {
                 last_processed_block + 1
             )
         })?;
+        let mut logs: Vec<_> = logs
+            .into_iter()
+            .filter(|l| l.block_number.is_some() && l.log_index.is_some())
+            .collect();
+        // make sure they are sorted
+        logs.sort_by(|a, b| {
+            a.block_number
+                .unwrap()
+                .cmp(&b.block_number.unwrap())
+                .then(a.log_index.unwrap().cmp(&b.log_index.unwrap()))
+        });
         if logs.is_empty() {
             trace!(
                 start = last_processed_block + 1,
